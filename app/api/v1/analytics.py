@@ -7,7 +7,17 @@ from fastapi import APIRouter, Depends, Query
 from trainy.database import Repository
 from trainy.metrics.critical_power import estimate_ftp_with_fallback
 from app.dependencies import get_repo
-from app.api.schemas.analytics import PowerCurveResponse, PowerCurvePoint
+from app.api.schemas.analytics import (
+    PowerCurveResponse,
+    PowerCurvePoint,
+    InjuryAnalysisResponse,
+    PainEvent,
+    PainLocationSummary,
+    PainActivitySummary,
+    PainLocationCount,
+    MergePainLocationsRequest,
+    MergePainLocationsResponse,
+)
 
 router = APIRouter()
 
@@ -104,3 +114,84 @@ async def get_power_curve(
         eftp_method=method,
         points=points,
     )
+
+
+@router.get("/injury-analysis", response_model=InjuryAnalysisResponse)
+async def get_injury_analysis(
+    days: int = Query(90, ge=7, le=365, description="Number of days to look back"),
+    repo: Repository = Depends(get_repo),
+):
+    """Get injury analysis data showing pain events and patterns."""
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+
+    # Get pain data from repository
+    pain_events_raw = repo.get_pain_events_for_range(start_date, end_date)
+    by_location_raw = repo.get_pain_summary_by_location(start_date, end_date)
+    by_activity_raw = repo.get_pain_summary_by_activity_type(start_date, end_date)
+
+    # Convert to response models
+    pain_events = [
+        PainEvent(
+            date=date.fromisoformat(e["date"]),
+            pain_location=e["pain_location"],
+            pain_severity=e["pain_severity"],
+            activity_type=e["activity_type"],
+            activity_id=e["activity_id"],
+            activity_title=e["activity_title"],
+        )
+        for e in pain_events_raw
+    ]
+
+    by_location = [
+        PainLocationSummary(
+            location=loc["location"],
+            count=loc["count"],
+            avg_severity=loc["avg_severity"],
+            max_severity=loc["max_severity"],
+        )
+        for loc in by_location_raw
+    ]
+
+    by_activity = [
+        PainActivitySummary(
+            activity_type=act["activity_type"],
+            count=act["count"],
+            avg_severity=act["avg_severity"],
+        )
+        for act in by_activity_raw
+    ]
+
+    return InjuryAnalysisResponse(
+        start_date=start_date,
+        end_date=end_date,
+        total_pain_events=len(pain_events),
+        pain_events=pain_events,
+        by_location=by_location,
+        by_activity=by_activity,
+    )
+
+
+@router.get("/pain-locations", response_model=list[PainLocationCount])
+async def get_pain_locations(
+    repo: Repository = Depends(get_repo),
+):
+    """Get all unique pain locations with occurrence counts."""
+    locations_raw = repo.get_unique_pain_locations()
+    return [
+        PainLocationCount(location=loc["location"], count=loc["count"])
+        for loc in locations_raw
+    ]
+
+
+@router.post("/merge-pain-locations", response_model=MergePainLocationsResponse)
+async def merge_pain_locations(
+    request: MergePainLocationsRequest,
+    repo: Repository = Depends(get_repo),
+):
+    """Merge multiple pain locations into a single target location."""
+    updated_count = repo.merge_pain_locations(
+        sources=request.source_locations,
+        target=request.target_location,
+    )
+    return MergePainLocationsResponse(updated_count=updated_count)

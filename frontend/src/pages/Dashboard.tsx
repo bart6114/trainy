@@ -4,6 +4,7 @@ import { Info } from 'lucide-react'
 import { ActivityCalendar } from '@/components/calendar/ActivityCalendar'
 import { DateActivitiesPanel } from '@/components/calendar/DateActivitiesPanel'
 import { MetricsCard } from '@/components/metrics/MetricsCard'
+import { WellnessSummary } from '@/components/wellness/WellnessSummary'
 import { useCurrentMetrics } from '@/hooks/useMetrics'
 import { getFormStatusColor, getACWRStatusColor } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -14,9 +15,10 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">Your training overview</p>
+        <WellnessSummary />
       </div>
 
       {/* Metrics Cards */}

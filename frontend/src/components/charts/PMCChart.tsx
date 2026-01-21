@@ -132,12 +132,12 @@ export function PMCChart({ data }: PMCChartProps) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
 
-              {/* TSB Zone backgrounds on right axis */}
-              <ReferenceArea yAxisId="right" y1={25} y2={maxTsb + 10} fill={TSB_ZONES.OVER_FRESH.color} fillOpacity={0.3} />
+              {/* TSB Zone backgrounds on right axis - y1/y2 must stay within axis domain or ReferenceArea won't render (Recharts bug #1335) */}
+              <ReferenceArea yAxisId="right" y1={25} y2={maxTsb + 5} fill={TSB_ZONES.OVER_FRESH.color} fillOpacity={0.3} />
               <ReferenceArea yAxisId="right" y1={5} y2={25} fill={TSB_ZONES.FRESH.color} fillOpacity={0.3} />
               <ReferenceArea yAxisId="right" y1={-10} y2={5} fill={TSB_ZONES.NEUTRAL.color} fillOpacity={0.3} />
               <ReferenceArea yAxisId="right" y1={-30} y2={-10} fill={TSB_ZONES.OPTIMAL.color} fillOpacity={0.3} />
-              <ReferenceArea yAxisId="right" y1={minTsb - 10} y2={-30} fill={TSB_ZONES.HIGH_RISK.color} fillOpacity={0.3} />
+              <ReferenceArea yAxisId="right" y1={minTsb - 5} y2={-30} fill={TSB_ZONES.HIGH_RISK.color} fillOpacity={0.3} />
 
               <XAxis
                 dataKey="date"

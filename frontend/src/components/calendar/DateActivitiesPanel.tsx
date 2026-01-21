@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useCalendarDate } from '@/hooks/useCalendar'
 import { formatDuration, formatDistance } from '@/lib/utils'
+import { ActivityFeedbackDisplay } from '@/components/wellness/ActivityFeedbackDisplay'
 
 interface DateActivitiesPanelProps {
   date: Date | null
@@ -86,20 +87,23 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
               <div>
                 <h4 className="text-sm font-medium mb-2 text-muted-foreground">Completed</h4>
                 {data.activities.map((activity) => (
-                  <div key={activity.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{activity.activity_type}</Badge>
-                        <span className="font-medium">{activity.title || 'Untitled'}</span>
+                  <div key={activity.id} className="py-2 border-b last:border-0">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{activity.activity_type}</Badge>
+                          <span className="font-medium">{activity.title || 'Untitled'}</span>
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {formatDuration(activity.duration_seconds)}
+                          {activity.distance_meters && ` - ${formatDistance(activity.distance_meters)}`}
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {formatDuration(activity.duration_seconds)}
-                        {activity.distance_meters && ` - ${formatDistance(activity.distance_meters)}`}
-                      </div>
+                      {activity.tss && (
+                        <div className="text-sm font-medium">{Math.round(activity.tss)} TSS</div>
+                      )}
                     </div>
-                    {activity.tss && (
-                      <div className="text-sm font-medium">{Math.round(activity.tss)} TSS</div>
-                    )}
+                    <ActivityFeedbackDisplay activityId={activity.id} />
                   </div>
                 ))}
               </div>
