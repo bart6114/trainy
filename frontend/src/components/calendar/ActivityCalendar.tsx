@@ -101,26 +101,45 @@ export function ActivityCalendar({ onDateSelect }: ActivityCalendarProps) {
   const getActivityDots = (dayData?: CalendarDay) => {
     if (!dayData) return null
 
-    const activityTypes = [...new Set(dayData.activities.map((a) => a.activity_type))]
     const plannedWorkouts = dayData.planned_workouts || []
-    const plannedTypes = [...new Set(
-      plannedWorkouts.filter(w => w.status === 'planned').map((w) => w.activity_type)
+
+    // Build set of activity IDs that completed planned workouts
+    const completedPlannedActivityIds = new Set(
+      plannedWorkouts
+        .filter(w => w.status === 'completed' && w.completed_activity_id)
+        .map(w => w.completed_activity_id)
+    )
+
+    // Get activities with their types and whether they were planned
+    const activities = dayData.activities.map(a => ({
+      id: a.id,
+      type: a.activity_type,
+      wasPlanned: completedPlannedActivityIds.has(a.id)
+    }))
+
+    // Get pending planned workouts (not yet completed)
+    const pendingPlannedTypes = [...new Set(
+      plannedWorkouts.filter(w => w.status === 'planned').map(w => w.activity_type)
     )]
 
-    if (activityTypes.length === 0 && plannedTypes.length === 0) return null
+    if (activities.length === 0 && pendingPlannedTypes.length === 0) return null
 
     return (
       <div className="flex justify-center gap-0.5 mt-1">
-        {activityTypes.slice(0, 2).map((type, i) => (
+        {activities.slice(0, 2).map((activity, i) => (
           <div
             key={`act-${i}`}
-            className={cn('w-1.5 h-1.5 rounded-full', activityColors[type] || activityColors.default)}
+            className={cn(
+              'w-1.5 h-1.5',
+              activity.wasPlanned ? 'rounded-none' : 'rounded-full',
+              activityColors[activity.type] || activityColors.default
+            )}
           />
         ))}
-        {plannedTypes.slice(0, 2).map((type, i) => (
+        {pendingPlannedTypes.slice(0, 2).map((type, i) => (
           <div
             key={`plan-${i}`}
-            className={cn('w-1.5 h-1.5 rounded-full border bg-transparent', plannedColors[type] || plannedColors.default)}
+            className={cn('w-1.5 h-1.5 rounded-none border bg-transparent', plannedColors[type] || plannedColors.default)}
           />
         ))}
       </div>
