@@ -13,6 +13,8 @@ from .models import (
     UserProfile,
     PlannedWorkout,
     WorkoutFeedback,
+    UserSettings,
+    MorningCheckin,
 )
 
 
@@ -837,3 +839,203 @@ class Repository:
             "daily_metrics": daily_metrics_count,
             "workout_feedback": feedback_count,
         }
+
+    # --- User Settings (Wellness) ---
+
+    def get_user_settings(self) -> UserSettings:
+        """Get user settings, creating default if none exists."""
+        cursor = self.conn.execute("SELECT * FROM user_settings LIMIT 1")
+        row = cursor.fetchone()
+        if row:
+            return UserSettings(
+                id=row["id"],
+                morning_checkin_enabled=bool(row["morning_checkin_enabled"]),
+                morning_sleep_quality_enabled=bool(row["morning_sleep_quality_enabled"]),
+                morning_sleep_hours_enabled=bool(row["morning_sleep_hours_enabled"]),
+                morning_muscle_soreness_enabled=bool(row["morning_muscle_soreness_enabled"]),
+                morning_energy_enabled=bool(row["morning_energy_enabled"]),
+                morning_mood_enabled=bool(row["morning_mood_enabled"]),
+                post_workout_feedback_enabled=bool(row["post_workout_feedback_enabled"]),
+                post_workout_rpe_enabled=bool(row["post_workout_rpe_enabled"]),
+                post_workout_pain_enabled=bool(row["post_workout_pain_enabled"]),
+                post_workout_session_feel_enabled=bool(row["post_workout_session_feel_enabled"]),
+                post_workout_notes_enabled=bool(row["post_workout_notes_enabled"]),
+            )
+        return UserSettings()
+
+    def update_user_settings(self, settings: UserSettings) -> UserSettings:
+        """Update user settings, creating if none exists."""
+        existing = self.conn.execute("SELECT id FROM user_settings LIMIT 1").fetchone()
+
+        if existing:
+            self.conn.execute(
+                """
+                UPDATE user_settings SET
+                    morning_checkin_enabled = ?,
+                    morning_sleep_quality_enabled = ?,
+                    morning_sleep_hours_enabled = ?,
+                    morning_muscle_soreness_enabled = ?,
+                    morning_energy_enabled = ?,
+                    morning_mood_enabled = ?,
+                    post_workout_feedback_enabled = ?,
+                    post_workout_rpe_enabled = ?,
+                    post_workout_pain_enabled = ?,
+                    post_workout_session_feel_enabled = ?,
+                    post_workout_notes_enabled = ?
+                WHERE id = ?
+                """,
+                (
+                    settings.morning_checkin_enabled,
+                    settings.morning_sleep_quality_enabled,
+                    settings.morning_sleep_hours_enabled,
+                    settings.morning_muscle_soreness_enabled,
+                    settings.morning_energy_enabled,
+                    settings.morning_mood_enabled,
+                    settings.post_workout_feedback_enabled,
+                    settings.post_workout_rpe_enabled,
+                    settings.post_workout_pain_enabled,
+                    settings.post_workout_session_feel_enabled,
+                    settings.post_workout_notes_enabled,
+                    existing["id"],
+                ),
+            )
+            settings.id = existing["id"]
+        else:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO user_settings (
+                    morning_checkin_enabled, morning_sleep_quality_enabled,
+                    morning_sleep_hours_enabled, morning_muscle_soreness_enabled,
+                    morning_energy_enabled, morning_mood_enabled,
+                    post_workout_feedback_enabled, post_workout_rpe_enabled,
+                    post_workout_pain_enabled, post_workout_session_feel_enabled,
+                    post_workout_notes_enabled
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    settings.morning_checkin_enabled,
+                    settings.morning_sleep_quality_enabled,
+                    settings.morning_sleep_hours_enabled,
+                    settings.morning_muscle_soreness_enabled,
+                    settings.morning_energy_enabled,
+                    settings.morning_mood_enabled,
+                    settings.post_workout_feedback_enabled,
+                    settings.post_workout_rpe_enabled,
+                    settings.post_workout_pain_enabled,
+                    settings.post_workout_session_feel_enabled,
+                    settings.post_workout_notes_enabled,
+                ),
+            )
+            settings.id = cursor.lastrowid
+
+        self.conn.commit()
+        return settings
+
+    # --- Morning Check-in ---
+
+    def get_morning_checkin(self, checkin_date: date) -> Optional[MorningCheckin]:
+        """Get morning check-in for a specific date."""
+        cursor = self.conn.execute(
+            "SELECT * FROM morning_checkin WHERE checkin_date = ?",
+            (checkin_date.isoformat(),),
+        )
+        row = cursor.fetchone()
+        if row:
+            return MorningCheckin(
+                id=row["id"],
+                checkin_date=date.fromisoformat(row["checkin_date"]),
+                sleep_quality=row["sleep_quality"],
+                sleep_hours=row["sleep_hours"],
+                muscle_soreness=row["muscle_soreness"],
+                energy_level=row["energy_level"],
+                mood=row["mood"],
+                notes=row["notes"],
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+            )
+        return None
+
+    def upsert_morning_checkin(self, checkin: MorningCheckin) -> MorningCheckin:
+        """Insert or update morning check-in for a date."""
+        existing = self.conn.execute(
+            "SELECT id FROM morning_checkin WHERE checkin_date = ?",
+            (checkin.checkin_date.isoformat(),),
+        ).fetchone()
+
+        if existing:
+            self.conn.execute(
+                """
+                UPDATE morning_checkin SET
+                    sleep_quality = ?,
+                    sleep_hours = ?,
+                    muscle_soreness = ?,
+                    energy_level = ?,
+                    mood = ?,
+                    notes = ?
+                WHERE id = ?
+                """,
+                (
+                    checkin.sleep_quality,
+                    checkin.sleep_hours,
+                    checkin.muscle_soreness,
+                    checkin.energy_level,
+                    checkin.mood,
+                    checkin.notes,
+                    existing["id"],
+                ),
+            )
+            checkin.id = existing["id"]
+        else:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO morning_checkin (
+                    checkin_date, sleep_quality, sleep_hours,
+                    muscle_soreness, energy_level, mood, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    checkin.checkin_date.isoformat(),
+                    checkin.sleep_quality,
+                    checkin.sleep_hours,
+                    checkin.muscle_soreness,
+                    checkin.energy_level,
+                    checkin.mood,
+                    checkin.notes,
+                ),
+            )
+            checkin.id = cursor.lastrowid
+
+        self.conn.commit()
+        return checkin
+
+    # --- Pending Feedback (for notification badge) ---
+
+    def get_activities_without_feedback(self, days: int = 3) -> list[Activity]:
+        """Get activities from the last N days that don't have feedback."""
+        start_date = date.today() - timedelta(days=days)
+        cursor = self.conn.execute(
+            """
+            SELECT a.* FROM activities a
+            LEFT JOIN workout_feedback wf ON a.id = wf.activity_id
+            WHERE DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+              AND wf.id IS NULL
+            ORDER BY a.start_time DESC
+            """,
+            (start_date.isoformat(), date.today().isoformat()),
+        )
+        return [self._row_to_activity(row) for row in cursor.fetchall()]
+
+    def upsert_activity_feedback(self, feedback: WorkoutFeedback) -> WorkoutFeedback:
+        """Insert or update feedback for an activity."""
+        if feedback.activity_id:
+            existing = self.conn.execute(
+                "SELECT id FROM workout_feedback WHERE activity_id = ?",
+                (feedback.activity_id,),
+            ).fetchone()
+
+            if existing:
+                feedback.id = existing["id"]
+                self.update_feedback(feedback)
+                return feedback
+
+        feedback.id = self.insert_feedback(feedback)
+        return feedback

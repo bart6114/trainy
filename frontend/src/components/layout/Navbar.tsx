@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { Activity, Calendar, BarChart3, Target, Settings, BookOpen, TrendingUp } from 'lucide-react'
+import { NotificationButton } from '@/components/wellness/NotificationButton'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: Calendar },
@@ -22,7 +23,7 @@ export function Navbar() {
           <Activity className="h-6 w-6" />
           <span className="font-bold">Trainy</span>
         </Link>
-        <nav className="flex items-center space-x-6 text-sm font-medium">
+        <nav className="flex flex-1 items-center space-x-6 text-sm font-medium">
           {navItems.map((item) => {
             const isActive = location.pathname === item.href
             return (
@@ -40,6 +41,9 @@ export function Navbar() {
             )
           })}
         </nav>
+        <div className="ml-auto">
+          <NotificationButton />
+        </div>
       </div>
     </header>
   )

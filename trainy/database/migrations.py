@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 -- Schema version tracking
@@ -166,6 +166,43 @@ CREATE TABLE IF NOT EXISTS workout_feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_workout_feedback_activity ON workout_feedback(activity_id);
+
+-- User settings for wellness tracking
+CREATE TABLE IF NOT EXISTS user_settings (
+    id INTEGER PRIMARY KEY,
+
+    -- Morning check-in toggles
+    morning_checkin_enabled BOOLEAN DEFAULT FALSE,
+    morning_sleep_quality_enabled BOOLEAN DEFAULT FALSE,
+    morning_sleep_hours_enabled BOOLEAN DEFAULT FALSE,
+    morning_muscle_soreness_enabled BOOLEAN DEFAULT FALSE,
+    morning_energy_enabled BOOLEAN DEFAULT FALSE,
+    morning_mood_enabled BOOLEAN DEFAULT FALSE,
+
+    -- Post-workout feedback toggles
+    post_workout_feedback_enabled BOOLEAN DEFAULT FALSE,
+    post_workout_rpe_enabled BOOLEAN DEFAULT FALSE,
+    post_workout_pain_enabled BOOLEAN DEFAULT FALSE,
+    post_workout_session_feel_enabled BOOLEAN DEFAULT FALSE,
+    post_workout_notes_enabled BOOLEAN DEFAULT FALSE
+);
+
+-- Morning check-in (one per day, not tied to activities)
+CREATE TABLE IF NOT EXISTS morning_checkin (
+    id INTEGER PRIMARY KEY,
+    checkin_date DATE UNIQUE NOT NULL,
+
+    sleep_quality INTEGER,
+    sleep_hours REAL,
+    muscle_soreness INTEGER,
+    energy_level INTEGER,
+    mood INTEGER,
+
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_morning_checkin_date ON morning_checkin(checkin_date);
 """
 
 
@@ -201,6 +238,9 @@ def _apply_migrations(conn: sqlite3.Connection, from_version: int, to_version: i
 
     if from_version < 3 <= to_version:
         _migrate_v2_to_v3(conn)
+
+    if from_version < 4 <= to_version:
+        _migrate_v3_to_v4(conn)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (to_version,))
     conn.commit()
@@ -285,3 +325,41 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
 
     # Drop training_schemas table if it exists (regardless of whether we migrated)
     conn.execute("DROP TABLE IF EXISTS training_schemas")
+
+
+def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
+    """Migration from v3 to v4: Add user_settings and morning_checkin tables for wellness tracking."""
+    # Create user_settings table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY,
+            morning_checkin_enabled BOOLEAN DEFAULT FALSE,
+            morning_sleep_quality_enabled BOOLEAN DEFAULT FALSE,
+            morning_sleep_hours_enabled BOOLEAN DEFAULT FALSE,
+            morning_muscle_soreness_enabled BOOLEAN DEFAULT FALSE,
+            morning_energy_enabled BOOLEAN DEFAULT FALSE,
+            morning_mood_enabled BOOLEAN DEFAULT FALSE,
+            post_workout_feedback_enabled BOOLEAN DEFAULT FALSE,
+            post_workout_rpe_enabled BOOLEAN DEFAULT FALSE,
+            post_workout_pain_enabled BOOLEAN DEFAULT FALSE,
+            post_workout_session_feel_enabled BOOLEAN DEFAULT FALSE,
+            post_workout_notes_enabled BOOLEAN DEFAULT FALSE
+        )
+    """)
+
+    # Create morning_checkin table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS morning_checkin (
+            id INTEGER PRIMARY KEY,
+            checkin_date DATE UNIQUE NOT NULL,
+            sleep_quality INTEGER,
+            sleep_hours REAL,
+            muscle_soreness INTEGER,
+            energy_level INTEGER,
+            mood INTEGER,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_morning_checkin_date ON morning_checkin(checkin_date)")

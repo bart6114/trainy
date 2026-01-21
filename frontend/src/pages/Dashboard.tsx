@@ -5,15 +5,12 @@ import { ActivityCalendar } from '@/components/calendar/ActivityCalendar'
 import { DateActivitiesPanel } from '@/components/calendar/DateActivitiesPanel'
 import { MetricsCard } from '@/components/metrics/MetricsCard'
 import { useCurrentMetrics } from '@/hooks/useMetrics'
-import { useActivities } from '@/hooks/useActivities'
-import { ActivityCard } from '@/components/activities/ActivityCard'
 import { getFormStatusColor, getACWRStatusColor } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 export function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const { data: metrics, isLoading: metricsLoading } = useCurrentMetrics()
-  const { data: activities, isLoading: activitiesLoading } = useActivities(0, 5)
 
   return (
     <div className="space-y-6">
@@ -84,22 +81,6 @@ export function Dashboard() {
         <div>
           <DateActivitiesPanel date={selectedDate} />
         </div>
-      </div>
-
-      {/* Recent Activities */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Recent Activities</h2>
-        {activitiesLoading ? (
-          <p className="text-muted-foreground">Loading activities...</p>
-        ) : activities && activities.items.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {activities.items.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-muted-foreground">No activities yet. Import some FIT files to get started!</p>
-        )}
       </div>
     </div>
   )

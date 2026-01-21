@@ -1,6 +1,7 @@
 import { ThresholdsForm } from '@/components/settings/ThresholdsForm'
 import { ImportSection } from '@/components/settings/ImportSection'
 import { DangerZone } from '@/components/settings/DangerZone'
+import { WellnessSettings } from '@/components/wellness/WellnessSettings'
 
 export function Settings() {
   return (
@@ -13,6 +14,7 @@ export function Settings() {
       <div className="grid gap-6 lg:grid-cols-2">
         <ThresholdsForm />
         <ImportSection />
+        <WellnessSettings />
       </div>
 
       <DangerZone />

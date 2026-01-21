@@ -174,3 +174,41 @@ class WorkoutFeedback(BaseModel):
     notes: Optional[str] = None
 
     created_at: Optional[datetime] = None
+
+
+class UserSettings(BaseModel):
+    """User settings for wellness tracking features."""
+
+    id: Optional[int] = None
+
+    # Morning check-in toggles
+    morning_checkin_enabled: bool = False
+    morning_sleep_quality_enabled: bool = False
+    morning_sleep_hours_enabled: bool = False
+    morning_muscle_soreness_enabled: bool = False
+    morning_energy_enabled: bool = False
+    morning_mood_enabled: bool = False
+
+    # Post-workout feedback toggles
+    post_workout_feedback_enabled: bool = False
+    post_workout_rpe_enabled: bool = False
+    post_workout_pain_enabled: bool = False
+    post_workout_session_feel_enabled: bool = False
+    post_workout_notes_enabled: bool = False
+
+
+class MorningCheckin(BaseModel):
+    """Daily morning wellness check-in (not tied to activities)."""
+
+    id: Optional[int] = None
+    checkin_date: date
+
+    # Wellness metrics (all 1-10 scale except sleep_hours)
+    sleep_quality: Optional[int] = None
+    sleep_hours: Optional[float] = None
+    muscle_soreness: Optional[int] = None
+    energy_level: Optional[int] = None
+    mood: Optional[int] = None
+
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None

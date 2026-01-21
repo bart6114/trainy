@@ -364,3 +364,91 @@ export interface DeleteResponse {
   deleted: Record<string, number>
   message: string | null
 }
+
+// Wellness types
+export interface UserSettings {
+  id: number | null
+  morning_checkin_enabled: boolean
+  morning_sleep_quality_enabled: boolean
+  morning_sleep_hours_enabled: boolean
+  morning_muscle_soreness_enabled: boolean
+  morning_energy_enabled: boolean
+  morning_mood_enabled: boolean
+  post_workout_feedback_enabled: boolean
+  post_workout_rpe_enabled: boolean
+  post_workout_pain_enabled: boolean
+  post_workout_session_feel_enabled: boolean
+  post_workout_notes_enabled: boolean
+}
+
+export interface UserSettingsUpdate {
+  morning_checkin_enabled?: boolean
+  morning_sleep_quality_enabled?: boolean
+  morning_sleep_hours_enabled?: boolean
+  morning_muscle_soreness_enabled?: boolean
+  morning_energy_enabled?: boolean
+  morning_mood_enabled?: boolean
+  post_workout_feedback_enabled?: boolean
+  post_workout_rpe_enabled?: boolean
+  post_workout_pain_enabled?: boolean
+  post_workout_session_feel_enabled?: boolean
+  post_workout_notes_enabled?: boolean
+}
+
+export interface MorningCheckin {
+  id: number | null
+  checkin_date: string
+  sleep_quality: number | null
+  sleep_hours: number | null
+  muscle_soreness: number | null
+  energy_level: number | null
+  mood: number | null
+  notes: string | null
+  created_at: string | null
+}
+
+export interface MorningCheckinRequest {
+  checkin_date: string
+  sleep_quality?: number | null
+  sleep_hours?: number | null
+  muscle_soreness?: number | null
+  energy_level?: number | null
+  mood?: number | null
+  notes?: string | null
+}
+
+export interface PendingActivityItem {
+  id: number
+  activity_type: string
+  title: string | null
+  start_time: string
+  duration_seconds: number
+  distance_meters: number | null
+}
+
+export interface PendingFeedback {
+  activities: PendingActivityItem[]
+  morning_checkin_pending: boolean
+  total_count: number
+}
+
+export interface ActivityFeedback {
+  id: number | null
+  activity_id: number
+  rpe: number | null
+  comfort_level: number | null
+  has_pain: boolean
+  pain_location: string | null
+  pain_severity: number | null
+  notes: string | null
+  created_at: string | null
+}
+
+export interface ActivityFeedbackRequest {
+  rpe?: number | null
+  comfort_level?: number | null
+  has_pain?: boolean
+  pain_location?: string | null
+  pain_severity?: number | null
+  notes?: string | null
+}
