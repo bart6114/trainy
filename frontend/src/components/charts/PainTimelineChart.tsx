@@ -1,4 +1,4 @@
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { PainEvent } from '@/types'
 
 interface PainTimelineChartProps {
@@ -23,6 +23,8 @@ function getLocationColor(location: string | null): string {
   const normalized = location.toLowerCase()
   return LOCATION_COLORS[normalized] || LOCATION_COLORS.other
 }
+
+type ChartDataPoint = PainEvent & { timestamp: number }
 
 interface CustomTooltipProps {
   active?: boolean
@@ -69,20 +71,35 @@ export function PainTimelineChart({ data }: PainTimelineChartProps) {
     )
   }
 
-  // Convert dates to timestamps for scatter chart
-  const chartData = data.map((event) => ({
+  // Convert dates to timestamps for chart
+  const chartData: ChartDataPoint[] = data.map((event) => ({
     ...event,
     timestamp: new Date(event.date).getTime(),
   }))
 
-  // Get unique locations for legend
-  const uniqueLocations = [...new Set(data.map(e => e.pain_location || 'other'))]
+  // Group events by location and sort chronologically
+  const groupedByLocation = chartData.reduce<Record<string, ChartDataPoint[]>>((acc, event) => {
+    const location = event.pain_location || 'other'
+    if (!acc[location]) {
+      acc[location] = []
+    }
+    acc[location].push(event)
+    return acc
+  }, {})
+
+  // Sort each group by timestamp
+  Object.values(groupedByLocation).forEach(group => {
+    group.sort((a, b) => a.timestamp - b.timestamp)
+  })
+
+  // Get unique locations for legend and lines
+  const uniqueLocations = Object.keys(groupedByLocation)
 
   return (
     <div className="space-y-2">
       <div className="h-[250px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
+          <ComposedChart margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
               dataKey="timestamp"
@@ -95,6 +112,7 @@ export function PainTimelineChart({ data }: PainTimelineChartProps) {
               tick={{ fontSize: 11 }}
               stroke="#9ca3af"
               axisLine={{ stroke: '#d1d5db' }}
+              allowDuplicatedCategory={false}
             />
             <YAxis
               dataKey="pain_severity"
@@ -113,15 +131,26 @@ export function PainTimelineChart({ data }: PainTimelineChartProps) {
               }}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Scatter data={chartData} fill="#8884d8">
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={getLocationColor(entry.pain_location)}
+            {/* Render a line + scatter for each location group */}
+            {uniqueLocations.map((location) => {
+              const locationData = groupedByLocation[location]
+              const color = getLocationColor(location)
+              return (
+                <Line
+                  key={`line-${location}`}
+                  data={locationData}
+                  dataKey="pain_severity"
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeOpacity={0.6}
+                  dot={{ fill: color, r: 5, strokeWidth: 0 }}
+                  activeDot={{ r: 7, fill: color }}
+                  connectNulls={false}
+                  isAnimationActive={false}
                 />
-              ))}
-            </Scatter>
-          </ScatterChart>
+              )
+            })}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       {/* Legend */}
