@@ -1,0 +1,158 @@
+#!/usr/bin/env python
+"""CLI script for importing FIT files from RunGap."""
+
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from trainy.config import settings
+from trainy.database import Repository
+from trainy.database.models import ActivityMetrics
+from trainy.importers import FitImporter, parse_fit_file
+from trainy.metrics import calculate_tss, calculate_training_load
+from trainy.metrics.efficiency import calculate_efficiency_factor, calculate_variability_index
+
+
+def main():
+    """Main import function."""
+    print("=" * 60)
+    print("Trainy - FIT File Importer")
+    print("=" * 60)
+
+    # Check RunGap path
+    if not settings.rungap_exists:
+        print(f"Error: RunGap path not found: {settings.rungap_path}")
+        sys.exit(1)
+
+    print(f"RunGap path: {settings.rungap_path}")
+
+    # Initialize importer and database
+    importer = FitImporter(settings.rungap_path)
+    db = Repository(settings.database_path)
+
+    # Get list of FIT files
+    fit_files = importer.get_fit_files()
+    total_files = len(fit_files)
+    print(f"Found {total_files} FIT files to process")
+
+    if total_files == 0:
+        print("No FIT files found. Exiting.")
+        return
+
+    # Get user profile for TSS calculations
+    profile = db.get_current_profile()
+    if profile.id is None:
+        print("Creating default user profile...")
+        db.save_profile(profile)
+        profile = db.get_current_profile()
+
+    print(f"\nUser profile: FTP={profile.ftp}W, LTHR={profile.lthr}bpm, Threshold Pace={profile.threshold_pace_minkm}min/km")
+    print()
+
+    # Import activities
+    imported = 0
+    skipped = 0
+    failed = 0
+
+    for i, fit_file in enumerate(fit_files):
+        # Progress indicator
+        if (i + 1) % 100 == 0 or (i + 1) == total_files:
+            print(f"Processing: {i + 1}/{total_files} ({imported} imported, {skipped} skipped, {failed} failed)")
+
+        try:
+            # Parse FIT file
+            activity = parse_fit_file(fit_file, include_raw_data=False)
+
+            if activity is None:
+                failed += 1
+                continue
+
+            # Check if already imported
+            existing = db.get_activity_by_hash(activity.fit_file_hash)
+            if existing:
+                skipped += 1
+                continue
+
+            # Insert activity
+            activity_id = db.insert_activity(activity)
+
+            # Calculate TSS and efficiency metrics
+            tss, method, intensity_factor = calculate_tss(activity, profile)
+            ef = calculate_efficiency_factor(activity)
+            vi = calculate_variability_index(activity)
+
+            # Store activity metrics
+            metrics = ActivityMetrics(
+                activity_id=activity_id,
+                tss=tss,
+                tss_method=method.value,
+                intensity_factor=intensity_factor,
+                efficiency_factor=ef,
+                variability_index=vi,
+            )
+            db.insert_activity_metrics(metrics)
+
+            imported += 1
+
+        except Exception as e:
+            print(f"Error processing {fit_file.name}: {e}")
+            failed += 1
+
+    print()
+    print("=" * 60)
+    print(f"Import complete!")
+    print(f"  Imported: {imported}")
+    print(f"  Skipped (already exists): {skipped}")
+    print(f"  Failed: {failed}")
+    print("=" * 60)
+
+    # Calculate training load metrics
+    if imported > 0:
+        print("\nCalculating training load metrics...")
+
+        # Get daily TSS series
+        daily_tss = db.get_daily_tss_series()
+
+        if daily_tss:
+            print(f"Processing {len(daily_tss)} days of data...")
+
+            # Calculate CTL/ATL/TSB
+            training_load = calculate_training_load(daily_tss)
+
+            # Store daily metrics
+            for metrics in training_load:
+                # Get activity counts for this day
+                activities = db.get_activities_for_date(metrics.date)
+                metrics.activity_count = len(activities)
+                metrics.total_duration_s = sum(a.duration_seconds for a in activities)
+                metrics.total_distance_m = sum(a.distance_meters or 0 for a in activities)
+
+                db.upsert_daily_metrics(metrics)
+
+            print(f"Training load calculated for {len(training_load)} days")
+
+            # Show current form
+            latest = db.get_latest_daily_metrics()
+            if latest:
+                print()
+                print("Current Training Status:")
+                print(f"  CTL (Fitness): {latest.ctl:.1f}")
+                print(f"  ATL (Fatigue): {latest.atl:.1f}")
+                print(f"  TSB (Form): {latest.tsb:+.1f}")
+                print(f"  7-day TSS: {latest.tss_7day:.0f}")
+                print(f"  30-day TSS: {latest.tss_30day:.0f}")
+                if latest.acwr is not None:
+                    print(f"  ACWR: {latest.acwr:.2f}")
+                if latest.monotony is not None:
+                    print(f"  Monotony: {latest.monotony:.2f}")
+                if latest.strain is not None:
+                    print(f"  Strain: {latest.strain:.0f}")
+
+    db.close()
+    print("\nDone!")
+
+
+if __name__ == "__main__":
+    main()

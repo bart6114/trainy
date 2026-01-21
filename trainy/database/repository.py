@@ -1,0 +1,752 @@
+"""Data access layer for the database."""
+
+import sqlite3
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+from .migrations import init_database
+from .models import (
+    Activity,
+    ActivityMetrics,
+    DailyMetrics,
+    UserProfile,
+    PlannedWorkout,
+    WorkoutFeedback,
+)
+
+
+class Repository:
+    """Data access layer for all database operations."""
+
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.conn = init_database(db_path)
+
+    def close(self) -> None:
+        """Close the database connection."""
+        self.conn.close()
+
+    # --- Activities ---
+
+    def insert_activity(self, activity: Activity) -> int:
+        """Insert a new activity, returns the ID."""
+        cursor = self.conn.execute(
+            """
+            INSERT INTO activities (
+                fit_file_hash, fit_file_path, start_time, end_time,
+                activity_type, source, duration_seconds, distance_meters,
+                avg_speed_mps, max_speed_mps, total_ascent_m, total_descent_m,
+                avg_hr, max_hr, avg_power, max_power, normalized_power,
+                avg_cadence, calories, title, raw_fit_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                activity.fit_file_hash,
+                activity.fit_file_path,
+                activity.start_time.isoformat() if activity.start_time else None,
+                activity.end_time.isoformat() if activity.end_time else None,
+                activity.activity_type,
+                activity.source,
+                activity.duration_seconds,
+                activity.distance_meters,
+                activity.avg_speed_mps,
+                activity.max_speed_mps,
+                activity.total_ascent_m,
+                activity.total_descent_m,
+                activity.avg_hr,
+                activity.max_hr,
+                activity.avg_power,
+                activity.max_power,
+                activity.normalized_power,
+                activity.avg_cadence,
+                activity.calories,
+                activity.title,
+                activity.raw_fit_data,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_activity_by_hash(self, fit_file_hash: str) -> Optional[Activity]:
+        """Get activity by FIT file hash."""
+        cursor = self.conn.execute(
+            "SELECT * FROM activities WHERE fit_file_hash = ?", (fit_file_hash,)
+        )
+        row = cursor.fetchone()
+        return self._row_to_activity(row) if row else None
+
+    def get_activity_by_id(self, activity_id: int) -> Optional[Activity]:
+        """Get activity by ID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM activities WHERE id = ?", (activity_id,)
+        )
+        row = cursor.fetchone()
+        return self._row_to_activity(row) if row else None
+
+    def get_activities_by_date_range(
+        self, start_date: date, end_date: date
+    ) -> list[Activity]:
+        """Get activities within a date range."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM activities
+            WHERE DATE(start_time) >= ? AND DATE(start_time) <= ?
+            ORDER BY start_time DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [self._row_to_activity(row) for row in cursor.fetchall()]
+
+    def get_activities_for_date(self, target_date: date) -> list[Activity]:
+        """Get all activities for a specific date."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM activities
+            WHERE DATE(start_time) = ?
+            ORDER BY start_time
+            """,
+            (target_date.isoformat(),),
+        )
+        return [self._row_to_activity(row) for row in cursor.fetchall()]
+
+    def get_all_activities(
+        self, limit: Optional[int] = None, offset: int = 0
+    ) -> list[Activity]:
+        """Get all activities with optional pagination."""
+        query = "SELECT * FROM activities ORDER BY start_time DESC"
+        if limit:
+            query += f" LIMIT {limit} OFFSET {offset}"
+        cursor = self.conn.execute(query)
+        return [self._row_to_activity(row) for row in cursor.fetchall()]
+
+    def get_activity_count(self) -> int:
+        """Get total number of activities."""
+        cursor = self.conn.execute("SELECT COUNT(*) FROM activities")
+        return cursor.fetchone()[0]
+
+    def get_recent_activities(self, days: int = 30) -> list[Activity]:
+        """Get activities from the last N days."""
+        start_date = date.today() - timedelta(days=days)
+        return self.get_activities_by_date_range(start_date, date.today())
+
+    def get_recent_activities_with_metrics(self, days: int = 60) -> list[Activity]:
+        """Get activities from the last N days with TSS joined from activity_metrics."""
+        start_date = date.today() - timedelta(days=days)
+        cursor = self.conn.execute(
+            """
+            SELECT a.*, m.tss
+            FROM activities a
+            LEFT JOIN activity_metrics m ON a.id = m.activity_id
+            WHERE DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+            ORDER BY a.start_time DESC
+            """,
+            (start_date.isoformat(), date.today().isoformat()),
+        )
+        return [self._row_to_activity_with_tss(row) for row in cursor.fetchall()]
+
+    def _row_to_activity_with_tss(self, row: sqlite3.Row) -> Activity:
+        """Convert database row to Activity model including TSS from join."""
+        activity = self._row_to_activity(row)
+        activity.tss = row["tss"] if "tss" in row.keys() else None
+        return activity
+
+    def _row_to_activity(self, row: sqlite3.Row) -> Activity:
+        """Convert database row to Activity model."""
+        return Activity(
+            id=row["id"],
+            fit_file_hash=row["fit_file_hash"],
+            fit_file_path=row["fit_file_path"],
+            start_time=datetime.fromisoformat(row["start_time"]),
+            end_time=datetime.fromisoformat(row["end_time"]) if row["end_time"] else None,
+            activity_type=row["activity_type"],
+            source=row["source"],
+            duration_seconds=row["duration_seconds"],
+            distance_meters=row["distance_meters"],
+            avg_speed_mps=row["avg_speed_mps"],
+            max_speed_mps=row["max_speed_mps"],
+            total_ascent_m=row["total_ascent_m"],
+            total_descent_m=row["total_descent_m"],
+            avg_hr=row["avg_hr"],
+            max_hr=row["max_hr"],
+            avg_power=row["avg_power"],
+            max_power=row["max_power"],
+            normalized_power=row["normalized_power"],
+            avg_cadence=row["avg_cadence"],
+            calories=row["calories"],
+            title=row["title"],
+            imported_at=datetime.fromisoformat(row["imported_at"]) if row["imported_at"] else None,
+            raw_fit_data=row["raw_fit_data"],
+        )
+
+    # --- Activity Metrics ---
+
+    def insert_activity_metrics(self, metrics: ActivityMetrics) -> int:
+        """Insert or update activity metrics."""
+        cursor = self.conn.execute(
+            """
+            INSERT OR REPLACE INTO activity_metrics (
+                activity_id, tss, tss_method, intensity_factor,
+                efficiency_factor, variability_index,
+                peak_power_5s, peak_power_1min, peak_power_5min, peak_power_20min
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metrics.activity_id,
+                metrics.tss,
+                metrics.tss_method,
+                metrics.intensity_factor,
+                metrics.efficiency_factor,
+                metrics.variability_index,
+                metrics.peak_power_5s,
+                metrics.peak_power_1min,
+                metrics.peak_power_5min,
+                metrics.peak_power_20min,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_activity_metrics(self, activity_id: int) -> Optional[ActivityMetrics]:
+        """Get metrics for an activity."""
+        cursor = self.conn.execute(
+            "SELECT * FROM activity_metrics WHERE activity_id = ?", (activity_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return ActivityMetrics(
+                id=row["id"],
+                activity_id=row["activity_id"],
+                tss=row["tss"],
+                tss_method=row["tss_method"],
+                intensity_factor=row["intensity_factor"],
+                efficiency_factor=row["efficiency_factor"] if "efficiency_factor" in row.keys() else None,
+                variability_index=row["variability_index"] if "variability_index" in row.keys() else None,
+                peak_power_5s=row["peak_power_5s"],
+                peak_power_1min=row["peak_power_1min"],
+                peak_power_5min=row["peak_power_5min"],
+                peak_power_20min=row["peak_power_20min"],
+                calculated_at=datetime.fromisoformat(row["calculated_at"]) if row["calculated_at"] else None,
+            )
+        return None
+
+    def update_activity_tss(self, activity_id: int, tss: float, tss_method: str, intensity_factor: float) -> None:
+        """Update TSS for an activity."""
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO activity_metrics (activity_id, tss, tss_method, intensity_factor, calculated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (activity_id, tss, tss_method, intensity_factor),
+        )
+        self.conn.commit()
+
+    # --- Daily Metrics ---
+
+    def upsert_daily_metrics(self, metrics: DailyMetrics) -> None:
+        """Insert or update daily metrics."""
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO daily_metrics (
+                date, total_tss, activity_count, total_duration_s, total_distance_m,
+                ctl, atl, tsb, tss_7day, tss_30day, tss_90day,
+                acwr, monotony, strain
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metrics.date.isoformat(),
+                metrics.total_tss,
+                metrics.activity_count,
+                metrics.total_duration_s,
+                metrics.total_distance_m,
+                metrics.ctl,
+                metrics.atl,
+                metrics.tsb,
+                metrics.tss_7day,
+                metrics.tss_30day,
+                metrics.tss_90day,
+                metrics.acwr,
+                metrics.monotony,
+                metrics.strain,
+            ),
+        )
+        self.conn.commit()
+
+    def get_daily_metrics(self, target_date: date) -> Optional[DailyMetrics]:
+        """Get daily metrics for a specific date."""
+        cursor = self.conn.execute(
+            "SELECT * FROM daily_metrics WHERE date = ?", (target_date.isoformat(),)
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_daily_metrics(row)
+        return None
+
+    def _row_to_daily_metrics(self, row: sqlite3.Row) -> DailyMetrics:
+        """Convert database row to DailyMetrics model."""
+        keys = row.keys()
+        return DailyMetrics(
+            date=date.fromisoformat(row["date"]),
+            total_tss=row["total_tss"] or 0,
+            activity_count=row["activity_count"] or 0,
+            total_duration_s=row["total_duration_s"] or 0,
+            total_distance_m=row["total_distance_m"] or 0,
+            ctl=row["ctl"],
+            atl=row["atl"],
+            tsb=row["tsb"],
+            tss_7day=row["tss_7day"],
+            tss_30day=row["tss_30day"],
+            tss_90day=row["tss_90day"],
+            acwr=row["acwr"] if "acwr" in keys else None,
+            monotony=row["monotony"] if "monotony" in keys else None,
+            strain=row["strain"] if "strain" in keys else None,
+        )
+
+    def get_daily_metrics_range(self, start_date: date, end_date: date) -> list[DailyMetrics]:
+        """Get daily metrics for a date range."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM daily_metrics
+            WHERE date >= ? AND date <= ?
+            ORDER BY date
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [self._row_to_daily_metrics(row) for row in cursor.fetchall()]
+
+    def get_latest_daily_metrics(self) -> Optional[DailyMetrics]:
+        """Get the most recent daily metrics."""
+        cursor = self.conn.execute(
+            "SELECT * FROM daily_metrics ORDER BY date DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_daily_metrics(row)
+        return None
+
+    # --- User Profile ---
+
+    def get_current_profile(self) -> UserProfile:
+        """Get the current user profile."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM user_profile
+            WHERE effective_from <= DATE('now')
+            ORDER BY effective_from DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+        if row:
+            return UserProfile(
+                id=row["id"],
+                ftp=row["ftp"],
+                lthr=row["lthr"],
+                max_hr=row["max_hr"],
+                resting_hr=row["resting_hr"],
+                threshold_pace_minkm=row["threshold_pace_minkm"],
+                swim_threshold_pace=row["swim_threshold_pace"],
+                weight_kg=row["weight_kg"],
+                effective_from=date.fromisoformat(row["effective_from"]),
+                metrics_dirty=bool(row["metrics_dirty"]),
+            )
+        # Return default profile if none exists
+        return UserProfile()
+
+    def save_profile(self, profile: UserProfile) -> int:
+        """Save user profile, returns ID."""
+        cursor = self.conn.execute(
+            """
+            INSERT INTO user_profile (
+                ftp, lthr, max_hr, resting_hr, threshold_pace_minkm,
+                swim_threshold_pace, weight_kg, effective_from, metrics_dirty
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                profile.ftp,
+                profile.lthr,
+                profile.max_hr,
+                profile.resting_hr,
+                profile.threshold_pace_minkm,
+                profile.swim_threshold_pace,
+                profile.weight_kg,
+                profile.effective_from.isoformat(),
+                profile.metrics_dirty,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def update_profile(self, profile: UserProfile) -> None:
+        """Update existing profile."""
+        self.conn.execute(
+            """
+            UPDATE user_profile SET
+                ftp = ?, lthr = ?, max_hr = ?, resting_hr = ?,
+                threshold_pace_minkm = ?, swim_threshold_pace = ?,
+                weight_kg = ?, metrics_dirty = ?
+            WHERE id = ?
+            """,
+            (
+                profile.ftp,
+                profile.lthr,
+                profile.max_hr,
+                profile.resting_hr,
+                profile.threshold_pace_minkm,
+                profile.swim_threshold_pace,
+                profile.weight_kg,
+                profile.metrics_dirty,
+                profile.id,
+            ),
+        )
+        self.conn.commit()
+
+    def set_metrics_dirty(self, dirty: bool) -> None:
+        """Set the metrics_dirty flag on the current profile."""
+        self.conn.execute(
+            """
+            UPDATE user_profile SET metrics_dirty = ?
+            WHERE id = (SELECT id FROM user_profile ORDER BY effective_from DESC LIMIT 1)
+            """,
+            (dirty,),
+        )
+        self.conn.commit()
+
+    # --- Planned Workouts ---
+
+    def insert_planned_workout(self, workout: PlannedWorkout) -> int:
+        """Insert a planned workout."""
+        cursor = self.conn.execute(
+            """
+            INSERT INTO planned_workouts (
+                planned_date, activity_type, workout_type,
+                title, description, structured_workout, target_duration_s,
+                target_distance_m, target_tss, target_hr_zone, target_pace_minkm,
+                status, completed_activity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                workout.planned_date.isoformat(),
+                workout.activity_type,
+                workout.workout_type,
+                workout.title,
+                workout.description,
+                workout.structured_workout,
+                workout.target_duration_s,
+                workout.target_distance_m,
+                workout.target_tss,
+                workout.target_hr_zone,
+                workout.target_pace_minkm,
+                workout.status,
+                workout.completed_activity_id,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def bulk_insert_planned_workouts(self, workouts: list[PlannedWorkout]) -> list[int]:
+        """Insert multiple planned workouts in a batch."""
+        ids = []
+        for workout in workouts:
+            workout_id = self.insert_planned_workout(workout)
+            ids.append(workout_id)
+        return ids
+
+    def delete_planned_workout(self, workout_id: int) -> bool:
+        """Delete a planned workout."""
+        cursor = self.conn.execute(
+            "DELETE FROM planned_workouts WHERE id = ?",
+            (workout_id,),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_planned_workouts_for_date(self, target_date: date) -> list[PlannedWorkout]:
+        """Get planned workouts for a specific date."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM planned_workouts
+            WHERE planned_date = ?
+            ORDER BY id
+            """,
+            (target_date.isoformat(),),
+        )
+        return [self._row_to_planned_workout(row) for row in cursor.fetchall()]
+
+    def get_planned_workouts_range(
+        self, start_date: date, end_date: date
+    ) -> list[PlannedWorkout]:
+        """Get planned workouts in a date range."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM planned_workouts
+            WHERE planned_date >= ? AND planned_date <= ?
+            ORDER BY planned_date
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [self._row_to_planned_workout(row) for row in cursor.fetchall()]
+
+    def update_planned_workout_status(
+        self, workout_id: int, status: str, completed_activity_id: Optional[int] = None
+    ) -> None:
+        """Update planned workout status."""
+        self.conn.execute(
+            """
+            UPDATE planned_workouts
+            SET status = ?, completed_activity_id = ?
+            WHERE id = ?
+            """,
+            (status, completed_activity_id, workout_id),
+        )
+        self.conn.commit()
+
+    def _row_to_planned_workout(self, row: sqlite3.Row) -> PlannedWorkout:
+        """Convert row to PlannedWorkout."""
+        return PlannedWorkout(
+            id=row["id"],
+            planned_date=date.fromisoformat(row["planned_date"]),
+            activity_type=row["activity_type"],
+            workout_type=row["workout_type"],
+            title=row["title"],
+            description=row["description"],
+            structured_workout=row["structured_workout"],
+            target_duration_s=row["target_duration_s"],
+            target_distance_m=row["target_distance_m"],
+            target_tss=row["target_tss"],
+            target_hr_zone=row["target_hr_zone"],
+            target_pace_minkm=row["target_pace_minkm"],
+            status=row["status"],
+            completed_activity_id=row["completed_activity_id"],
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+        )
+
+    def get_upcoming_planned_workouts(self, days: int = 7) -> list[PlannedWorkout]:
+        """Get planned workouts for the next N days."""
+        start = date.today()
+        end = start + timedelta(days=days)
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM planned_workouts
+            WHERE planned_date >= ? AND planned_date <= ?
+            AND status = 'planned'
+            ORDER BY planned_date
+            """,
+            (start.isoformat(), end.isoformat()),
+        )
+        return [self._row_to_planned_workout(row) for row in cursor.fetchall()]
+
+    def get_unmatched_planned_workouts_for_date(self, target_date: date) -> list[PlannedWorkout]:
+        """Get planned workouts for a date that haven't been matched to an activity."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM planned_workouts
+            WHERE planned_date = ? AND completed_activity_id IS NULL AND status = 'planned'
+            ORDER BY id
+            """,
+            (target_date.isoformat(),),
+        )
+        return [self._row_to_planned_workout(row) for row in cursor.fetchall()]
+
+    def match_activity_to_workout(self, workout_id: int, activity_id: int) -> None:
+        """Link an activity to a planned workout."""
+        self.conn.execute(
+            """
+            UPDATE planned_workouts
+            SET status = 'completed', completed_activity_id = ?
+            WHERE id = ?
+            """,
+            (activity_id, workout_id),
+        )
+        self.conn.commit()
+
+    # --- Workout Feedback ---
+
+    def insert_feedback(self, feedback: WorkoutFeedback) -> int:
+        """Insert workout feedback."""
+        cursor = self.conn.execute(
+            """
+            INSERT INTO workout_feedback (
+                activity_id, planned_workout_id, rpe, comfort_level,
+                energy_level, motivation, sleep_hours, sleep_quality,
+                muscle_soreness, fatigue_level, has_pain, pain_location,
+                pain_severity, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                feedback.activity_id,
+                feedback.planned_workout_id,
+                feedback.rpe,
+                feedback.comfort_level,
+                feedback.energy_level,
+                feedback.motivation,
+                feedback.sleep_hours,
+                feedback.sleep_quality,
+                feedback.muscle_soreness,
+                feedback.fatigue_level,
+                feedback.has_pain,
+                feedback.pain_location,
+                feedback.pain_severity,
+                feedback.notes,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_feedback_for_activity(self, activity_id: int) -> Optional[WorkoutFeedback]:
+        """Get feedback for an activity."""
+        cursor = self.conn.execute(
+            "SELECT * FROM workout_feedback WHERE activity_id = ?", (activity_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return WorkoutFeedback(
+                id=row["id"],
+                activity_id=row["activity_id"],
+                planned_workout_id=row["planned_workout_id"],
+                rpe=row["rpe"],
+                comfort_level=row["comfort_level"],
+                energy_level=row["energy_level"],
+                motivation=row["motivation"],
+                sleep_hours=row["sleep_hours"],
+                sleep_quality=row["sleep_quality"],
+                muscle_soreness=row["muscle_soreness"],
+                fatigue_level=row["fatigue_level"],
+                has_pain=bool(row["has_pain"]),
+                pain_location=row["pain_location"],
+                pain_severity=row["pain_severity"],
+                notes=row["notes"],
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+            )
+        return None
+
+    def update_feedback(self, feedback: WorkoutFeedback) -> None:
+        """Update existing feedback."""
+        self.conn.execute(
+            """
+            UPDATE workout_feedback SET
+                rpe = ?, comfort_level = ?, energy_level = ?, motivation = ?,
+                sleep_hours = ?, sleep_quality = ?, muscle_soreness = ?,
+                fatigue_level = ?, has_pain = ?, pain_location = ?,
+                pain_severity = ?, notes = ?
+            WHERE id = ?
+            """,
+            (
+                feedback.rpe,
+                feedback.comfort_level,
+                feedback.energy_level,
+                feedback.motivation,
+                feedback.sleep_hours,
+                feedback.sleep_quality,
+                feedback.muscle_soreness,
+                feedback.fatigue_level,
+                feedback.has_pain,
+                feedback.pain_location,
+                feedback.pain_severity,
+                feedback.notes,
+                feedback.id,
+            ),
+        )
+        self.conn.commit()
+
+    # --- Utility Methods ---
+
+    def get_weekly_tss_totals(self, weeks: int = 12) -> list[dict]:
+        """Get weekly TSS totals for the last N weeks.
+
+        Returns list of dicts with 'week_start' and 'total_tss' keys.
+        """
+        cursor = self.conn.execute(
+            """
+            SELECT
+                DATE(start_time, 'weekday 0', '-6 days') as week_start,
+                COALESCE(SUM(m.tss), 0) as total_tss
+            FROM activities a
+            LEFT JOIN activity_metrics m ON a.id = m.activity_id
+            WHERE DATE(start_time) >= DATE('now', ? || ' days')
+            GROUP BY week_start
+            ORDER BY week_start
+            """,
+            (f"-{weeks * 7}",),
+        )
+        return [
+            {"week_start": row[0], "total_tss": round(row[1] or 0)}
+            for row in cursor.fetchall()
+        ]
+
+    def get_daily_tss_series(self) -> list[tuple[date, float]]:
+        """Get (date, total_tss) for all days with activities."""
+        cursor = self.conn.execute(
+            """
+            SELECT DATE(a.start_time) as day, COALESCE(SUM(m.tss), 0) as daily_tss
+            FROM activities a
+            LEFT JOIN activity_metrics m ON a.id = m.activity_id
+            GROUP BY DATE(a.start_time)
+            ORDER BY day
+            """
+        )
+        return [(date.fromisoformat(row[0]), row[1] or 0) for row in cursor.fetchall()]
+
+    def rebuild_daily_metrics(self) -> None:
+        """Rebuild all daily metrics from activities."""
+        # Get all days with activities
+        cursor = self.conn.execute(
+            """
+            SELECT DATE(start_time) as day,
+                   COUNT(*) as count,
+                   SUM(duration_seconds) as duration,
+                   SUM(distance_meters) as distance
+            FROM activities
+            GROUP BY DATE(start_time)
+            ORDER BY day
+            """
+        )
+
+        daily_data = {}
+        for row in cursor.fetchall():
+            day = date.fromisoformat(row[0])
+            daily_data[day] = {
+                "count": row[1],
+                "duration": row[2] or 0,
+                "distance": row[3] or 0,
+            }
+
+        # Get TSS per day
+        cursor = self.conn.execute(
+            """
+            SELECT DATE(a.start_time) as day, SUM(m.tss) as tss
+            FROM activities a
+            JOIN activity_metrics m ON a.id = m.activity_id
+            GROUP BY DATE(a.start_time)
+            """
+        )
+        for row in cursor.fetchall():
+            day = date.fromisoformat(row[0])
+            if day in daily_data:
+                daily_data[day]["tss"] = row[1] or 0
+
+        # Update daily_metrics table
+        for day, data in daily_data.items():
+            metrics = DailyMetrics(
+                date=day,
+                total_tss=data.get("tss", 0),
+                activity_count=data["count"],
+                total_duration_s=data["duration"],
+                total_distance_m=data["distance"],
+            )
+            self.upsert_daily_metrics(metrics)
+
+    def delete_all_activities(self) -> int:
+        """Delete all activities and their metrics. Returns count deleted."""
+        # First delete activity metrics
+        self.conn.execute("DELETE FROM activity_metrics")
+        # Then delete activities
+        cursor = self.conn.execute("DELETE FROM activities")
+        self.conn.commit()
+        return cursor.rowcount
+
+    def delete_all_daily_metrics(self) -> int:
+        """Delete all daily metrics. Returns count deleted."""
+        cursor = self.conn.execute("DELETE FROM daily_metrics")
+        self.conn.commit()
+        return cursor.rowcount
