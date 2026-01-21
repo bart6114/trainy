@@ -23,6 +23,7 @@ class WorkoutProposalItem(BaseModel):
     description: Optional[str] = None
     target_duration_minutes: int
     target_tss: Optional[int] = None
+    existing_workout_id: Optional[int] = None  # Set if editing an existing workout
 
 
 class GenerateStreamRequest(BaseModel):

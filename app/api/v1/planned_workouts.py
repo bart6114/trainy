@@ -135,10 +135,11 @@ def _get_training_context(repo: Repository) -> tuple[list[dict], dict, list[dict
         "tss_30day": latest_metrics.tss_30day if latest_metrics else 0,
     }
 
-    # Get existing planned workouts (next 30 days)
+    # Get existing planned workouts (next 30 days) - include ID for editing
     existing_workouts = repo.get_upcoming_planned_workouts(days=30)
     existing_summary = [
         {
+            "id": w.id,
             "date": w.planned_date.isoformat(),
             "activity_type": w.activity_type,
             "workout_type": w.workout_type,
@@ -210,22 +211,9 @@ async def generate_workouts_stream(
 
             workouts, assistant_message = result
 
-            # Convert to proposal format
-            proposal = [
-                {
-                    "date": w.planned_date.isoformat(),
-                    "activity_type": w.activity_type,
-                    "workout_type": w.workout_type,
-                    "title": w.title,
-                    "description": w.description,
-                    "target_duration_minutes": round(w.target_duration_s / 60) if w.target_duration_s else 0,
-                    "target_tss": w.target_tss,
-                }
-                for w in workouts
-            ]
-
+            # Workouts are already in proposal format (dicts with existing_workout_id)
             yield _sse_event("proposal", {
-                "workouts": proposal,
+                "workouts": workouts,
                 "assistant_message": assistant_message,
             })
 
@@ -291,22 +279,9 @@ async def refine_workouts_stream(
 
             workouts, assistant_message = result
 
-            # Convert to proposal format
-            proposal = [
-                {
-                    "date": w.planned_date.isoformat(),
-                    "activity_type": w.activity_type,
-                    "workout_type": w.workout_type,
-                    "title": w.title,
-                    "description": w.description,
-                    "target_duration_minutes": round(w.target_duration_s / 60) if w.target_duration_s else 0,
-                    "target_tss": w.target_tss,
-                }
-                for w in workouts
-            ]
-
+            # Workouts are already in proposal format (dicts with existing_workout_id)
             yield _sse_event("proposal", {
-                "workouts": proposal,
+                "workouts": workouts,
                 "assistant_message": assistant_message,
             })
 
@@ -328,23 +303,42 @@ async def accept_proposal(
     request: AcceptProposalRequest,
     repo: Repository = Depends(get_repo),
 ):
-    """Accept and save a workout proposal to the database."""
+    """Accept and save a workout proposal to the database.
+
+    If existing_workout_id is set, update that workout instead of creating a new one.
+    """
     saved_workouts = []
 
     for workout in request.workouts:
-        planned_workout = PlannedWorkout(
-            planned_date=workout.date,
-            activity_type=workout.activity_type,
-            workout_type=workout.workout_type,
-            title=workout.title,
-            description=workout.description,
-            target_duration_s=workout.target_duration_minutes * 60 if workout.target_duration_minutes else None,
-            target_tss=workout.target_tss,
-            status="planned",
-        )
-        workout_id = repo.insert_planned_workout(planned_workout)
-        planned_workout.id = workout_id
-        saved_workouts.append(planned_workout)
+        if workout.existing_workout_id:
+            # Update existing workout
+            updated = repo.update_planned_workout(
+                workout_id=workout.existing_workout_id,
+                planned_date=workout.date,
+                activity_type=workout.activity_type,
+                workout_type=workout.workout_type,
+                title=workout.title,
+                description=workout.description,
+                target_duration_s=workout.target_duration_minutes * 60 if workout.target_duration_minutes else None,
+                target_tss=workout.target_tss,
+            )
+            if updated:
+                saved_workouts.append(updated)
+        else:
+            # Create new workout
+            planned_workout = PlannedWorkout(
+                planned_date=workout.date,
+                activity_type=workout.activity_type,
+                workout_type=workout.workout_type,
+                title=workout.title,
+                description=workout.description,
+                target_duration_s=workout.target_duration_minutes * 60 if workout.target_duration_minutes else None,
+                target_tss=workout.target_tss,
+                status="planned",
+            )
+            workout_id = repo.insert_planned_workout(planned_workout)
+            planned_workout.id = workout_id
+            saved_workouts.append(planned_workout)
 
     return GeneratedWorkoutsResponse(
         workouts=[_workout_to_response(w) for w in saved_workouts],

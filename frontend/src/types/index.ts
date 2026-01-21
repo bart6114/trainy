@@ -287,6 +287,7 @@ export interface ProposedWorkout {
   description: string | null
   target_duration_minutes: number
   target_tss: number | null
+  existing_workout_id?: number | null  // Set if editing an existing workout
 }
 
 export interface WorkoutProposal {
@@ -451,4 +452,50 @@ export interface ActivityFeedbackRequest {
   pain_location?: string | null
   pain_severity?: number | null
   notes?: string | null
+}
+
+// Injury Analysis types
+export interface PainEvent {
+  date: string
+  pain_location: string | null
+  pain_severity: number | null
+  activity_type: string
+  activity_id: number
+  activity_title: string | null
+}
+
+export interface PainLocationSummary {
+  location: string | null
+  count: number
+  avg_severity: number | null
+  max_severity: number | null
+}
+
+export interface PainActivitySummary {
+  activity_type: string
+  count: number
+  avg_severity: number | null
+}
+
+export interface InjuryAnalysisResponse {
+  start_date: string
+  end_date: string
+  total_pain_events: number
+  pain_events: PainEvent[]
+  by_location: PainLocationSummary[]
+  by_activity: PainActivitySummary[]
+}
+
+export interface PainLocationCount {
+  location: string
+  count: number
+}
+
+export interface MergePainLocationsRequest {
+  source_locations: string[]
+  target_location: string
+}
+
+export interface MergePainLocationsResponse {
+  updated_count: number
 }

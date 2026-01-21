@@ -43,6 +43,7 @@ class WorkoutSchema(BaseModel):
     description: str
     target_duration_minutes: int
     target_tss: Optional[int] = None
+    existing_workout_id: Optional[int] = None  # Set if editing an existing workout
 
 
 class WorkoutsWithExplanationResponse(BaseModel):
@@ -86,7 +87,7 @@ async def generate_workouts_with_context(
     existing_workouts: list[dict],
     conversation_history: list[dict],
     is_refinement: bool = False,
-) -> Optional[tuple[list[PlannedWorkout], str]]:
+) -> Optional[tuple[list[dict], str]]:
     """Generate workouts with existing workout context and conversation history.
 
     Args:
@@ -98,7 +99,7 @@ async def generate_workouts_with_context(
         is_refinement: Whether this is refining an existing proposal
 
     Returns:
-        Tuple of (list of PlannedWorkout objects, assistant explanation) or None if generation fails
+        Tuple of (list of workout dicts with existing_workout_id, assistant explanation) or None if generation fails
     """
     if not settings.has_openrouter_key:
         return None
@@ -130,8 +131,14 @@ When creating workouts:
 - Long runs: HR Zone 2, building aerobic base
 - Recovery: Very easy or complete rest
 
+EDITING EXISTING WORKOUTS:
+- The user may ask to modify an existing planned workout (e.g., "make tomorrow's workout shorter")
+- Already planned workouts are shown with [ID:N] prefixes in the context
+- To edit an existing workout, include its ID in the `existing_workout_id` field
+- If creating a new workout, leave `existing_workout_id` as null
+
 Always respond with a valid JSON object containing:
-1. An array of workouts
+1. An array of workouts (with existing_workout_id set for edits)
 2. A brief explanation of your plan (2-3 sentences max)"""
 
     # Build messages with conversation history
@@ -194,18 +201,18 @@ Always respond with a valid JSON object containing:
             data = json.loads(content)
             workouts_response = WorkoutsWithExplanationResponse.model_validate(data)
 
-            # Convert to PlannedWorkout models
+            # Convert to workout dicts (including existing_workout_id for edits)
             workouts = [
-                PlannedWorkout(
-                    planned_date=w.date,
-                    activity_type=w.activity_type,
-                    workout_type=w.workout_type,
-                    title=w.title,
-                    description=w.description,
-                    target_duration_s=w.target_duration_minutes * 60,
-                    target_tss=w.target_tss,
-                    status="planned",
-                )
+                {
+                    "date": w.date.isoformat(),
+                    "activity_type": w.activity_type,
+                    "workout_type": w.workout_type,
+                    "title": w.title,
+                    "description": w.description,
+                    "target_duration_minutes": w.target_duration_minutes,
+                    "target_tss": w.target_tss,
+                    "existing_workout_id": w.existing_workout_id,
+                }
                 for w in workouts_response.workouts
             ]
 
@@ -338,14 +345,16 @@ def _build_analysis_context(
     """Build the context string for analysis phase."""
     today = date.today()
 
-    # Format existing workouts
+    # Format existing workouts (include ID for reference)
     existing_summary = ""
     if existing_workouts:
         lines = []
         for w in existing_workouts:
             duration_str = f"{w.get('target_duration_min', '?')}min" if w.get('target_duration_min') else ""
+            workout_id = w.get('id', '')
+            id_prefix = f"[ID:{workout_id}] " if workout_id else ""
             lines.append(
-                f"- {w.get('date', 'N/A')}: {w.get('title', 'N/A')} "
+                f"- {id_prefix}{w.get('date', 'N/A')}: {w.get('title', 'N/A')} "
                 f"({w.get('activity_type', 'N/A')}/{w.get('workout_type', 'N/A')}) {duration_str}"
             )
         existing_summary = "\n".join(lines)
@@ -412,14 +421,16 @@ TSB (Training Stress Balance): {current_fitness.get('tsb', 0):.1f}
 30-day TSS: {current_fitness.get('tss_30day', 0):.0f}
 """
 
-    # Format existing workouts
+    # Format existing workouts (include ID for editing)
     existing_summary = ""
     if existing_workouts:
         lines = []
         for w in existing_workouts:
             duration_str = f"{w.get('target_duration_min', '?')}min" if w.get('target_duration_min') else ""
+            workout_id = w.get('id', '')
+            id_prefix = f"[ID:{workout_id}] " if workout_id else ""
             lines.append(
-                f"- {w.get('date', 'N/A')}: {w.get('title', 'N/A')} "
+                f"- {id_prefix}{w.get('date', 'N/A')}: {w.get('title', 'N/A')} "
                 f"({w.get('activity_type', 'N/A')}/{w.get('workout_type', 'N/A')}) {duration_str}"
             )
         existing_summary = "\n".join(lines)
@@ -433,10 +444,18 @@ TSB (Training Stress Balance): {current_fitness.get('tsb', 0):.1f}
 Keep what works, adjust what they asked to change.
 Make sure the overall plan still makes sense after the changes."""
     else:
-        instruction = """Please create specific workouts for each day.
-Determine the appropriate duration based on the user's request (default to 4 weeks if not specified).
-Include appropriate progression and recovery.
-Consider the already planned workouts when creating the schedule."""
+        instruction = """Create ONLY the workouts explicitly requested by the user.
+- If they ask for "tomorrow", generate exactly 1 workout for tomorrow
+- If they ask for "this week", generate workouts for this week only
+- If they ask for "a 4-week plan", then generate 4 weeks
+- Never generate more workouts than explicitly requested
+- Do not assume a default duration - ask for clarification if unclear
+
+Include appropriate progression and recovery within the requested timeframe.
+Consider the already planned workouts when creating the schedule.
+
+If the user asks to modify an existing planned workout, include its ID in `existing_workout_id`.
+Reference workouts by their ID from the 'Already Planned Workouts' section."""
 
     return f"""{"Refine" if is_refinement else "Create"} training workouts based on the following:
 

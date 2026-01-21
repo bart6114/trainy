@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
-import { Send, Loader2, X, Check, Calendar, Dumbbell } from 'lucide-react'
+import { Send, Loader2, X, Check, Calendar, Dumbbell, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -68,8 +68,10 @@ function QuestionOptions({
 }
 
 function ProposedWorkoutCard({ workout }: { workout: ProposedWorkout }) {
+  const isEdit = !!workout.existing_workout_id
+
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
+    <div className={`flex items-start gap-3 p-3 rounded-lg border bg-card ${isEdit ? 'border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/20' : ''}`}>
       <div className="flex-shrink-0 w-12 text-center">
         <div className="text-xs text-muted-foreground font-medium">
           {format(parseISO(workout.date), 'EEE')}
@@ -83,6 +85,12 @@ function ProposedWorkoutCard({ workout }: { workout: ProposedWorkout }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
+          {isEdit && (
+            <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/50 dark:text-amber-400 dark:border-amber-700">
+              <Pencil className="w-3 h-3 mr-1" />
+              Editing
+            </Badge>
+          )}
           <Badge variant="outline" className="text-xs">
             {workout.activity_type}
           </Badge>
@@ -242,12 +250,23 @@ function WorkoutsPanel({
     return <EmptyWorkoutsPanel />
   }
 
+  const editCount = workouts.filter(w => w.existing_workout_id).length
+  const newCount = workouts.length - editCount
+
   return (
     <div className="flex flex-col h-full">
       {/* Sticky header with actions */}
       <div className="flex items-center justify-between p-4 border-b bg-background">
         <div className="text-sm font-medium">
-          {workouts.length} workout{workouts.length !== 1 ? 's' : ''} proposed
+          {editCount > 0 ? (
+            <>
+              {newCount > 0 && <span>{newCount} new</span>}
+              {newCount > 0 && editCount > 0 && <span>, </span>}
+              <span className="text-amber-600 dark:text-amber-400">{editCount} edit{editCount !== 1 ? 's' : ''}</span>
+            </>
+          ) : (
+            <>{workouts.length} workout{workouts.length !== 1 ? 's' : ''} proposed</>
+          )}
         </div>
         <div className="flex gap-2">
           <Button

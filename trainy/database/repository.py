@@ -508,6 +508,54 @@ class Repository:
         )
         self.conn.commit()
 
+    def update_planned_workout(
+        self,
+        workout_id: int,
+        planned_date: Optional[date] = None,
+        activity_type: Optional[str] = None,
+        workout_type: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        target_duration_s: Optional[float] = None,
+        target_tss: Optional[float] = None,
+    ) -> Optional[PlannedWorkout]:
+        """Update a planned workout's fields. Only non-None values are updated."""
+        # Build dynamic update query
+        updates = []
+        params = []
+
+        if planned_date is not None:
+            updates.append("planned_date = ?")
+            params.append(planned_date.isoformat())
+        if activity_type is not None:
+            updates.append("activity_type = ?")
+            params.append(activity_type)
+        if workout_type is not None:
+            updates.append("workout_type = ?")
+            params.append(workout_type)
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+        if target_duration_s is not None:
+            updates.append("target_duration_s = ?")
+            params.append(target_duration_s)
+        if target_tss is not None:
+            updates.append("target_tss = ?")
+            params.append(target_tss)
+
+        if not updates:
+            return self.get_planned_workout_by_id(workout_id)
+
+        params.append(workout_id)
+        query = f"UPDATE planned_workouts SET {', '.join(updates)} WHERE id = ?"
+        self.conn.execute(query, params)
+        self.conn.commit()
+
+        return self.get_planned_workout_by_id(workout_id)
+
     def _row_to_planned_workout(self, row: sqlite3.Row) -> PlannedWorkout:
         """Convert row to PlannedWorkout."""
         return PlannedWorkout(
@@ -1039,3 +1087,99 @@ class Repository:
 
         feedback.id = self.insert_feedback(feedback)
         return feedback
+
+    # --- Pain/Injury Analysis ---
+
+    def get_pain_events_for_range(self, start_date: date, end_date: date) -> list[dict]:
+        """Get pain events within a date range by joining workout_feedback and activities."""
+        cursor = self.conn.execute(
+            """
+            SELECT
+                DATE(a.start_time) as date,
+                wf.pain_location,
+                wf.pain_severity,
+                a.activity_type,
+                a.id as activity_id,
+                a.title as activity_title
+            FROM workout_feedback wf
+            JOIN activities a ON wf.activity_id = a.id
+            WHERE wf.has_pain = 1
+              AND DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+            ORDER BY a.start_time DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_pain_summary_by_location(self, start_date: date, end_date: date) -> list[dict]:
+        """Get pain summary grouped by location."""
+        cursor = self.conn.execute(
+            """
+            SELECT
+                wf.pain_location as location,
+                COUNT(*) as count,
+                ROUND(AVG(wf.pain_severity), 1) as avg_severity,
+                MAX(wf.pain_severity) as max_severity
+            FROM workout_feedback wf
+            JOIN activities a ON wf.activity_id = a.id
+            WHERE wf.has_pain = 1
+              AND DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+            GROUP BY wf.pain_location
+            ORDER BY count DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_pain_summary_by_activity_type(self, start_date: date, end_date: date) -> list[dict]:
+        """Get pain summary grouped by activity type."""
+        cursor = self.conn.execute(
+            """
+            SELECT
+                a.activity_type,
+                COUNT(*) as count,
+                ROUND(AVG(wf.pain_severity), 1) as avg_severity
+            FROM workout_feedback wf
+            JOIN activities a ON wf.activity_id = a.id
+            WHERE wf.has_pain = 1
+              AND DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+            GROUP BY a.activity_type
+            ORDER BY count DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_unique_pain_locations(self) -> list[dict]:
+        """Get unique pain locations with occurrence counts."""
+        cursor = self.conn.execute(
+            """
+            SELECT
+                pain_location as location,
+                COUNT(*) as count
+            FROM workout_feedback
+            WHERE has_pain = 1 AND pain_location IS NOT NULL AND pain_location != ''
+            GROUP BY pain_location
+            ORDER BY count DESC
+            """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def merge_pain_locations(self, sources: list[str], target: str) -> int:
+        """Merge multiple pain locations into a single target location.
+
+        Returns the number of updated records.
+        """
+        if not sources:
+            return 0
+        placeholders = ",".join("?" * len(sources))
+        cursor = self.conn.execute(
+            f"""
+            UPDATE workout_feedback
+            SET pain_location = ?
+            WHERE pain_location IN ({placeholders})
+            """,
+            [target] + sources,
+        )
+        self.conn.commit()
+        return cursor.rowcount
