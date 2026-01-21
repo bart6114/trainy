@@ -25,8 +25,9 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
     )
   }
 
-  const hasActivities = data && data.activities.length > 0
-  const hasPlannedWorkouts = data && data.planned_workouts && data.planned_workouts.length > 0
+  const hasActivities = (data?.activities?.length ?? 0) > 0
+  const plannedWorkouts = data?.planned_workouts ?? []
+  const hasPlannedWorkouts = plannedWorkouts.length > 0
   const hasContent = hasActivities || hasPlannedWorkouts
 
   return (
@@ -37,7 +38,7 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
       <CardContent>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : hasContent ? (
+        ) : hasContent && data ? (
           <div className="space-y-4">
             {data.total_tss > 0 && (
               <p className="text-sm text-muted-foreground">
@@ -49,7 +50,7 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
             {hasPlannedWorkouts && (
               <div>
                 <h4 className="text-sm font-medium mb-2 text-muted-foreground">Planned</h4>
-                {data.planned_workouts.map((workout) => (
+                {plannedWorkouts.map((workout) => (
                   <div key={workout.id} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div>
                       <div className="flex items-center gap-2">

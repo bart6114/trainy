@@ -49,23 +49,26 @@ export function ActivityCalendar({ onDateSelect }: ActivityCalendarProps) {
     if (!dayData) return null
 
     const activityTypes = [...new Set(dayData.activities.map((a) => a.activity_type))]
+    const plannedWorkouts = dayData.planned_workouts || []
     const plannedTypes = [...new Set(
-      (dayData.planned_workouts || [])
-        .filter(w => w.status === 'planned')
-        .map((w) => w.activity_type)
+      plannedWorkouts.filter(w => w.status === 'planned').map((w) => w.activity_type)
     )]
 
     if (activityTypes.length === 0 && plannedTypes.length === 0) return null
 
     return (
       <div className="flex justify-center gap-0.5 mt-1">
-        {/* Filled dots for completed activities */}
         {activityTypes.slice(0, 2).map((type, i) => (
-          <div key={`act-${i}`} className={cn('w-1.5 h-1.5 rounded-full', activityColors[type] || activityColors.default)} />
+          <div
+            key={`act-${i}`}
+            className={cn('w-1.5 h-1.5 rounded-full', activityColors[type] || activityColors.default)}
+          />
         ))}
-        {/* Outline dots for planned workouts */}
         {plannedTypes.slice(0, 2).map((type, i) => (
-          <div key={`plan-${i}`} className={cn('w-1.5 h-1.5 rounded-full border bg-transparent', plannedColors[type] || plannedColors.default)} />
+          <div
+            key={`plan-${i}`}
+            className={cn('w-1.5 h-1.5 rounded-full border bg-transparent', plannedColors[type] || plannedColors.default)}
+          />
         ))}
       </div>
     )

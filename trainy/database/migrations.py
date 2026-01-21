@@ -238,48 +238,50 @@ def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
 
 def _migrate_v2_to_v3(conn: sqlite3.Connection) -> None:
     """Migration from v2 to v3: Remove training_schemas, make planned_workouts standalone."""
-    # Create new planned_workouts table without training_schema_id
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS planned_workouts_new (
-            id INTEGER PRIMARY KEY,
-            planned_date DATE NOT NULL,
-            activity_type TEXT NOT NULL,
-            workout_type TEXT,
-            title TEXT NOT NULL,
-            description TEXT,
-            structured_workout TEXT,
-            target_duration_s REAL,
-            target_distance_m REAL,
-            target_tss REAL,
-            target_hr_zone INTEGER,
-            target_pace_minkm REAL,
-            status TEXT DEFAULT 'planned',
-            completed_activity_id INTEGER REFERENCES activities(id),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    # Check if old planned_workouts table exists with training_schema_id column
+    cursor = conn.execute("PRAGMA table_info(planned_workouts)")
+    columns = {row[1] for row in cursor.fetchall()}
 
-    # Copy existing data (dropping training_schema_id)
-    conn.execute("""
-        INSERT INTO planned_workouts_new (
-            id, planned_date, activity_type, workout_type, title, description,
-            structured_workout, target_duration_s, target_distance_m, target_tss,
-            target_hr_zone, target_pace_minkm, status, completed_activity_id, created_at
-        )
-        SELECT
-            id, planned_date, activity_type, workout_type, title, description,
-            structured_workout, target_duration_s, target_distance_m, target_tss,
-            target_hr_zone, target_pace_minkm, status, completed_activity_id, created_at
-        FROM planned_workouts
-    """)
+    if "training_schema_id" in columns:
+        # Migrate existing data: create new table, copy data, swap tables
+        conn.execute("""
+            CREATE TABLE planned_workouts_new (
+                id INTEGER PRIMARY KEY,
+                planned_date DATE NOT NULL,
+                activity_type TEXT NOT NULL,
+                workout_type TEXT,
+                title TEXT NOT NULL,
+                description TEXT,
+                structured_workout TEXT,
+                target_duration_s REAL,
+                target_distance_m REAL,
+                target_tss REAL,
+                target_hr_zone INTEGER,
+                target_pace_minkm REAL,
+                status TEXT DEFAULT 'planned',
+                completed_activity_id INTEGER REFERENCES activities(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-    # Drop old tables
-    conn.execute("DROP TABLE IF EXISTS planned_workouts")
+        conn.execute("""
+            INSERT INTO planned_workouts_new (
+                id, planned_date, activity_type, workout_type, title, description,
+                structured_workout, target_duration_s, target_distance_m, target_tss,
+                target_hr_zone, target_pace_minkm, status, completed_activity_id, created_at
+            )
+            SELECT
+                id, planned_date, activity_type, workout_type, title, description,
+                structured_workout, target_duration_s, target_distance_m, target_tss,
+                target_hr_zone, target_pace_minkm, status, completed_activity_id, created_at
+            FROM planned_workouts
+        """)
+
+        conn.execute("DROP TABLE planned_workouts")
+        conn.execute("ALTER TABLE planned_workouts_new RENAME TO planned_workouts")
+
+        conn.execute("CREATE INDEX idx_planned_workouts_date ON planned_workouts(planned_date)")
+        conn.execute("CREATE INDEX idx_planned_workouts_date_type ON planned_workouts(planned_date, activity_type)")
+
+    # Drop training_schemas table if it exists (regardless of whether we migrated)
     conn.execute("DROP TABLE IF EXISTS training_schemas")
-
-    # Rename new table
-    conn.execute("ALTER TABLE planned_workouts_new RENAME TO planned_workouts")
-
-    # Create indexes
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_planned_workouts_date ON planned_workouts(planned_date)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_planned_workouts_date_type ON planned_workouts(planned_date, activity_type)")

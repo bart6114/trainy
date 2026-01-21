@@ -1,7 +1,8 @@
 """Calendar API endpoints."""
 
-from datetime import date
 from calendar import monthrange
+from collections import defaultdict
+from datetime import date
 
 from fastapi import APIRouter, Depends, Path
 
@@ -96,20 +97,15 @@ async def get_calendar_month(
     planned_workouts = repo.get_planned_workouts_range(first_day, last_day)
 
     # Group activities by date
-    activities_by_date: dict[date, list[CalendarActivity]] = {}
+    activities_by_date: dict[date, list[CalendarActivity]] = defaultdict(list)
     for activity in activities:
         activity_date = activity.start_time.date()
-        if activity_date not in activities_by_date:
-            activities_by_date[activity_date] = []
-
         metrics = repo.get_activity_metrics(activity.id)
         activities_by_date[activity_date].append(_make_calendar_activity(activity, metrics))
 
     # Group planned workouts by date
-    workouts_by_date: dict[date, list[CalendarPlannedWorkout]] = {}
+    workouts_by_date: dict[date, list[CalendarPlannedWorkout]] = defaultdict(list)
     for workout in planned_workouts:
-        if workout.planned_date not in workouts_by_date:
-            workouts_by_date[workout.planned_date] = []
         workouts_by_date[workout.planned_date].append(_make_calendar_planned_workout(workout))
 
     # Combine all dates that have activities or planned workouts

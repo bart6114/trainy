@@ -119,18 +119,20 @@ class AdherenceTracker:
     def get_adherence_stats(self, start_date: date, end_date: date) -> dict:
         """Get adherence statistics for a date range."""
         workouts = self.repo.get_planned_workouts_range(start_date, end_date)
-
         total = len(workouts)
-        completed = sum(1 for w in workouts if w.status == "completed")
-        skipped = sum(1 for w in workouts if w.status == "skipped")
-        pending = sum(1 for w in workouts if w.status == "planned")
 
-        completion_rate = (completed / total * 100) if total > 0 else 0
+        # Count by status
+        status_counts = {"completed": 0, "skipped": 0, "planned": 0}
+        for w in workouts:
+            if w.status in status_counts:
+                status_counts[w.status] += 1
+
+        completion_rate = (status_counts["completed"] / total * 100) if total > 0 else 0
 
         return {
             "total": total,
-            "completed": completed,
-            "skipped": skipped,
-            "pending": pending,
+            "completed": status_counts["completed"],
+            "skipped": status_counts["skipped"],
+            "pending": status_counts["planned"],
             "completion_rate": round(completion_rate, 1),
         }

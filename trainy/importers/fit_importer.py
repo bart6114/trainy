@@ -13,6 +13,42 @@ from fitparse import FitFile
 from ..database.models import Activity
 
 
+def calculate_normalized_power(power_samples: list[float], window_seconds: int = 30) -> Optional[float]:
+    """Calculate Normalized Power from power samples.
+
+    NP algorithm:
+    1. Calculate 30-second rolling average of power
+    2. Raise each rolling average to the 4th power
+    3. Take the average of those values
+    4. Take the 4th root
+
+    Args:
+        power_samples: List of power values (assumed 1-second samples)
+        window_seconds: Rolling average window size (default 30s)
+
+    Returns:
+        Normalized power in watts, or None if insufficient data
+    """
+    if not power_samples or len(power_samples) < window_seconds:
+        return None
+
+    # Calculate 30-second rolling averages
+    rolling_avgs = []
+    for i in range(len(power_samples) - window_seconds + 1):
+        window = power_samples[i:i + window_seconds]
+        avg = sum(window) / window_seconds
+        rolling_avgs.append(avg)
+
+    if not rolling_avgs:
+        return None
+
+    # Raise to 4th power, average, then 4th root
+    fourth_powers = [p ** 4 for p in rolling_avgs]
+    np_value = (sum(fourth_powers) / len(fourth_powers)) ** 0.25
+
+    return round(np_value, 1)
+
+
 # Mapping of sport types from FIT files to our activity types
 SPORT_TYPE_MAP = {
     "running": "run",
@@ -155,6 +191,28 @@ def parse_fit_file(path: Path, include_raw_data: bool = False) -> Optional[Activ
         else:
             end_time = None
 
+        # Extract normalized power for cycling activities only
+        is_cycling = activity_type == "cycle"
+        normalized_power = None
+        power_samples = []
+
+        if is_cycling:
+            # First check if NP is in the session data
+            normalized_power = session_data.get("normalized_power")
+
+            # If not, calculate from power samples
+            if not normalized_power and session_data.get("avg_power"):
+                # Need to read power samples from records
+                fit_for_records = FitFile(str(path))
+                for record in fit_for_records.get_messages("record"):
+                    for field in record.fields:
+                        if field.name == "power" and field.value is not None:
+                            power_samples.append(field.value)
+                            break
+
+                if power_samples:
+                    normalized_power = calculate_normalized_power(power_samples)
+
         # Build raw data for storage if requested
         raw_fit_data = None
         if include_raw_data:
@@ -198,7 +256,7 @@ def parse_fit_file(path: Path, include_raw_data: bool = False) -> Optional[Activ
             max_hr=session_data.get("max_heart_rate"),
             avg_power=session_data.get("avg_power"),
             max_power=session_data.get("max_power"),
-            normalized_power=session_data.get("normalized_power"),
+            normalized_power=normalized_power,
             avg_cadence=session_data.get("avg_cadence") or session_data.get("avg_running_cadence"),
             calories=session_data.get("total_calories"),
             title=_generate_title(activity_type, start_time, session_data),

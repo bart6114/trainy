@@ -1,5 +1,7 @@
 """OpenRouter AI integration for workout generation."""
 
+import copy
+import json
 from datetime import date
 from typing import Literal, Optional
 
@@ -15,7 +17,6 @@ def _make_schema_strict(schema: dict) -> dict:
 
     Required by Anthropic's structured output API.
     """
-    import copy
     schema = copy.deepcopy(schema)
 
     def _add_additional_properties(obj):
@@ -140,14 +141,12 @@ Always respond with a valid JSON object containing an array of workouts."""
                 print(f"OpenRouter returned empty content: {result}")
                 return None
 
-            import json
             data = json.loads(content)
             workouts_response = WorkoutsResponse.model_validate(data)
 
             # Convert to PlannedWorkout models
-            planned_workouts = []
-            for w in workouts_response.workouts:
-                workout = PlannedWorkout(
+            return [
+                PlannedWorkout(
                     planned_date=w.date,
                     activity_type=w.activity_type,
                     workout_type=w.workout_type,
@@ -157,9 +156,8 @@ Always respond with a valid JSON object containing an array of workouts."""
                     target_tss=w.target_tss,
                     status="planned",
                 )
-                planned_workouts.append(workout)
-
-            return planned_workouts
+                for w in workouts_response.workouts
+            ]
 
     except Exception as e:
         print(f"Error generating workouts: {e}")

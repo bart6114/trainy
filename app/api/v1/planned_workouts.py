@@ -148,9 +148,7 @@ async def skip_workout(
     repo: Repository = Depends(get_repo),
 ):
     """Mark a workout as skipped."""
-    # Check if workout exists
-    workouts = repo.get_planned_workouts_range(date.min, date.max)
-    workout = next((w for w in workouts if w.id == workout_id), None)
+    workout = repo.get_planned_workout_by_id(workout_id)
     if not workout:
         raise HTTPException(status_code=404, detail="Workout not found")
 

@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from trainy.config import settings
 from trainy.database import Repository
 from trainy.database.models import ActivityMetrics
-from trainy.importers import FitImporter, parse_fit_file
+from trainy.importers import FitImporter, parse_fit_file, calculate_normalized_power
 from trainy.metrics import calculate_tss, calculate_training_load
 from trainy.metrics.efficiency import calculate_efficiency_factor, calculate_variability_index
 
@@ -154,5 +154,78 @@ def main():
     print("\nDone!")
 
 
+def recalculate_np():
+    """Recalculate normalized power for activities that have avg_power but no NP."""
+    from fitparse import FitFile
+
+    print("=" * 60)
+    print("Trainy - Recalculate Normalized Power")
+    print("=" * 60)
+
+    db = Repository(settings.database_path)
+
+    # Get all activities with power but no NP
+    all_activities = db.get_all_activities()
+    activities_to_update = [
+        a for a in all_activities
+        if a.avg_power and not a.normalized_power and a.fit_file_path
+    ]
+
+    print(f"Found {len(activities_to_update)} activities needing NP calculation")
+
+    updated = 0
+    failed = 0
+
+    for activity in activities_to_update:
+        try:
+            fit_path = Path(activity.fit_file_path)
+            if not fit_path.exists():
+                print(f"  File not found: {fit_path}")
+                failed += 1
+                continue
+
+            # Extract power samples from FIT file
+            fit = FitFile(str(fit_path))
+            power_samples = []
+
+            for record in fit.get_messages("record"):
+                for field in record.fields:
+                    if field.name == "power" and field.value is not None:
+                        power_samples.append(field.value)
+                        break
+
+            if power_samples:
+                np_value = calculate_normalized_power(power_samples)
+                if np_value:
+                    # Update in database
+                    db.conn.execute(
+                        "UPDATE activities SET normalized_power = ? WHERE id = ?",
+                        (np_value, activity.id)
+                    )
+                    db.conn.commit()
+                    print(f"  {activity.title}: NP = {np_value} W (avg = {activity.avg_power} W)")
+                    updated += 1
+                else:
+                    failed += 1
+            else:
+                failed += 1
+
+        except Exception as e:
+            print(f"  Error processing {activity.title}: {e}")
+            failed += 1
+
+    print()
+    print("=" * 60)
+    print(f"Recalculation complete!")
+    print(f"  Updated: {updated}")
+    print(f"  Failed: {failed}")
+    print("=" * 60)
+
+    db.close()
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--recalculate-np":
+        recalculate_np()
+    else:
+        main()

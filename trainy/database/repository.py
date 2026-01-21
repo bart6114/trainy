@@ -446,11 +446,7 @@ class Repository:
 
     def bulk_insert_planned_workouts(self, workouts: list[PlannedWorkout]) -> list[int]:
         """Insert multiple planned workouts in a batch."""
-        ids = []
-        for workout in workouts:
-            workout_id = self.insert_planned_workout(workout)
-            ids.append(workout_id)
-        return ids
+        return [self.insert_planned_workout(workout) for workout in workouts]
 
     def delete_planned_workout(self, workout_id: int) -> bool:
         """Delete a planned workout."""
@@ -460,6 +456,15 @@ class Repository:
         )
         self.conn.commit()
         return cursor.rowcount > 0
+
+    def get_planned_workout_by_id(self, workout_id: int) -> Optional[PlannedWorkout]:
+        """Get a planned workout by ID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM planned_workouts WHERE id = ?",
+            (workout_id,),
+        )
+        row = cursor.fetchone()
+        return self._row_to_planned_workout(row) if row else None
 
     def get_planned_workouts_for_date(self, target_date: date) -> list[PlannedWorkout]:
         """Get planned workouts for a specific date."""
