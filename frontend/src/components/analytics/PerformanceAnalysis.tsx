@@ -1,5 +1,7 @@
+import { useState, useMemo } from 'react'
 import { format, subDays } from 'date-fns'
 import { useDailyMetrics } from '@/hooks/useMetrics'
+import { useFormProjection } from '@/hooks/useProjection'
 import { PMCChart } from '@/components/charts/PMCChart'
 
 interface PerformanceAnalysisProps {
@@ -7,10 +9,26 @@ interface PerformanceAnalysisProps {
 }
 
 export function PerformanceAnalysis({ days }: PerformanceAnalysisProps) {
+  const [showProjection, setShowProjection] = useState(false)
+
   const endDate = format(new Date(), 'yyyy-MM-dd')
   const startDate = format(subDays(new Date(), days), 'yyyy-MM-dd')
 
   const { data: dailyMetrics, isLoading } = useDailyMetrics(startDate, endDate)
+
+  // Get the latest metrics for projection calculation
+  const latestMetrics = useMemo(() => {
+    if (!dailyMetrics || dailyMetrics.items.length === 0) return null
+    const latest = dailyMetrics.items[dailyMetrics.items.length - 1]
+    if (latest.ctl == null || latest.atl == null) return null
+    return { ctl: latest.ctl, atl: latest.atl }
+  }, [dailyMetrics])
+
+  const { projectedData, isLoading: projectionLoading } = useFormProjection(
+    showProjection,
+    latestMetrics,
+    42
+  )
 
   if (isLoading) {
     return (
@@ -28,5 +46,13 @@ export function PerformanceAnalysis({ days }: PerformanceAnalysisProps) {
     )
   }
 
-  return <PMCChart data={dailyMetrics.items} />
+  return (
+    <PMCChart
+      data={dailyMetrics.items}
+      projectedData={showProjection ? projectedData : undefined}
+      showProjection={showProjection}
+      onToggleProjection={setShowProjection}
+      projectionLoading={projectionLoading}
+    />
+  )
 }
