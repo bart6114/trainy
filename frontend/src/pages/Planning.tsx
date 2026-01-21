@@ -13,6 +13,7 @@ interface WeekData {
   days: { date: Date; workouts: PlannedWorkout[] }[]
   totalDuration: number
   totalDistance: number
+  totalTss: number
 }
 
 function groupWorkoutsByWeek(workouts: PlannedWorkout[]): WeekData[] {
@@ -32,7 +33,8 @@ function groupWorkoutsByWeek(workouts: PlannedWorkout[]): WeekData[] {
         weekStart,
         days,
         totalDuration: 0,
-        totalDistance: 0
+        totalDistance: 0,
+        totalTss: 0
       })
     }
 
@@ -43,6 +45,7 @@ function groupWorkoutsByWeek(workouts: PlannedWorkout[]): WeekData[] {
     }
     week.totalDuration += workout.target_duration_s || 0
     week.totalDistance += workout.target_distance_m || 0
+    week.totalTss += workout.target_tss || 0
   })
 
   return Array.from(weekMap.values()).sort(
@@ -76,6 +79,9 @@ function WorkoutCell({
       </div>
       <p className="font-medium truncate" title={workout.title}>{workout.title}</p>
       <div className="flex gap-2 text-muted-foreground">
+        {workout.target_tss && (
+          <span>{workout.target_tss} TSS</span>
+        )}
         {workout.target_duration_s && (
           <span>{formatDuration(workout.target_duration_s)}</span>
         )}
@@ -130,6 +136,10 @@ function WeekRow({
       <div className="p-2 bg-muted/50">
         <div className="text-xs font-medium mb-2">Week Total</div>
         <div className="space-y-1 text-sm">
+          <div>
+            <span className="text-muted-foreground">TSS:</span>{' '}
+            <span className="font-medium">{week.totalTss}</span>
+          </div>
           <div>
             <span className="text-muted-foreground">Time:</span>{' '}
             <span className="font-medium">{formatDuration(week.totalDuration)}</span>
