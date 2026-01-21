@@ -123,7 +123,22 @@ Always respond with a valid JSON object containing an array of workouts."""
                 return None
 
             result = response.json()
-            content = result["choices"][0]["message"]["content"]
+
+            # Check for error in response
+            if "error" in result:
+                print(f"OpenRouter returned error: {result['error']}")
+                return None
+
+            # Extract content from response
+            choices = result.get("choices", [])
+            if not choices:
+                print(f"OpenRouter returned no choices: {result}")
+                return None
+
+            content = choices[0].get("message", {}).get("content", "")
+            if not content:
+                print(f"OpenRouter returned empty content: {result}")
+                return None
 
             import json
             data = json.loads(content)
