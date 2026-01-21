@@ -1,11 +1,18 @@
 """Training load calculations (CTL, ATL, TSB, ACWR, Monotony, Strain)."""
 
+import math
 from datetime import date, timedelta
 from enum import Enum
 from statistics import mean, stdev
 from typing import Optional
 
 from ..database.models import DailyMetrics
+
+# EWMA decay factors using true exponential formula: 1 - e^(-1/k)
+# Reference: TrainingPeaks Performance Manager (Coggan/Allen)
+# https://www.trainingpeaks.com/learn/articles/the-science-of-the-performance-manager/
+CTL_DECAY = 1 - math.exp(-1 / 42)  # ≈ 0.02353 (42-day time constant)
+ATL_DECAY = 1 - math.exp(-1 / 7)  # ≈ 0.13314 (7-day time constant)
 
 
 class ACWRZone(Enum):
@@ -24,10 +31,12 @@ def calculate_training_load(
 ) -> list[DailyMetrics]:
     """Calculate CTL, ATL, TSB for a series of daily TSS values.
 
-    Uses Exponentially Weighted Moving Average (EWMA):
-    - CTL (Chronic Training Load): 42-day time constant
-    - ATL (Acute Training Load): 7-day time constant
+    Uses Exponentially Weighted Moving Average (EWMA) with true exponential decay:
+    - CTL (Chronic Training Load): 42-day time constant, decay = 1 - e^(-1/42)
+    - ATL (Acute Training Load): 7-day time constant, decay = 1 - e^(-1/7)
     - TSB (Training Stress Balance): CTL - ATL
+
+    Formula: value_today = value_yesterday + (TSS - value_yesterday) * decay
 
     Args:
         daily_tss: List of (date, tss) tuples sorted by date
@@ -54,9 +63,9 @@ def calculate_training_load(
     tss_history: list[float] = []
 
     for day, tss in filled_data:
-        # EWMA update
-        ctl = ctl + (tss - ctl) / 42
-        atl = atl + (tss - atl) / 7
+        # EWMA update using true exponential decay
+        ctl = ctl + (tss - ctl) * CTL_DECAY
+        atl = atl + (tss - atl) * ATL_DECAY
         tsb = ctl - atl
 
         # Add to history for rolling sums
