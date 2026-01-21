@@ -423,9 +423,9 @@ class Repository:
             INSERT INTO planned_workouts (
                 planned_date, activity_type, workout_type,
                 title, description, structured_workout, target_duration_s,
-                target_distance_m, target_tss, target_hr_zone, target_pace_minkm,
+                target_distance_m, target_tss, target_calories, target_hr_zone, target_pace_minkm,
                 status, completed_activity_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 workout.planned_date.isoformat(),
@@ -437,6 +437,7 @@ class Repository:
                 workout.target_duration_s,
                 workout.target_distance_m,
                 workout.target_tss,
+                workout.target_calories,
                 workout.target_hr_zone,
                 workout.target_pace_minkm,
                 workout.status,
@@ -518,6 +519,7 @@ class Repository:
         description: Optional[str] = None,
         target_duration_s: Optional[float] = None,
         target_tss: Optional[float] = None,
+        target_calories: Optional[int] = None,
     ) -> Optional[PlannedWorkout]:
         """Update a planned workout's fields. Only non-None values are updated."""
         # Build dynamic update query
@@ -545,6 +547,9 @@ class Repository:
         if target_tss is not None:
             updates.append("target_tss = ?")
             params.append(target_tss)
+        if target_calories is not None:
+            updates.append("target_calories = ?")
+            params.append(target_calories)
 
         if not updates:
             return self.get_planned_workout_by_id(workout_id)
@@ -558,6 +563,7 @@ class Repository:
 
     def _row_to_planned_workout(self, row: sqlite3.Row) -> PlannedWorkout:
         """Convert row to PlannedWorkout."""
+        keys = row.keys()
         return PlannedWorkout(
             id=row["id"],
             planned_date=date.fromisoformat(row["planned_date"]),
@@ -569,6 +575,7 @@ class Repository:
             target_duration_s=row["target_duration_s"],
             target_distance_m=row["target_distance_m"],
             target_tss=row["target_tss"],
+            target_calories=row["target_calories"] if "target_calories" in keys else None,
             target_hr_zone=row["target_hr_zone"],
             target_pace_minkm=row["target_pace_minkm"],
             status=row["status"],

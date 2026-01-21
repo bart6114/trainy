@@ -39,6 +39,7 @@ def _workout_to_response(workout: PlannedWorkout) -> PlannedWorkoutResponse:
         target_duration_s=workout.target_duration_s,
         target_distance_m=workout.target_distance_m,
         target_tss=workout.target_tss,
+        target_calories=workout.target_calories,
         target_hr_zone=workout.target_hr_zone,
         target_pace_minkm=workout.target_pace_minkm,
         status=workout.status,
@@ -196,6 +197,9 @@ async def generate_workouts_stream(
             # Phase 2: Generating
             yield _sse_event("thinking", {"phase": "generating", "message": "Creating personalized workouts..."})
 
+            # Get user profile for TSS/calorie calculation
+            profile = repo.get_current_profile()
+
             # Generate workouts with conversation context
             result = await generate_workouts_with_context(
                 user_prompt=request.prompt,
@@ -203,6 +207,7 @@ async def generate_workouts_stream(
                 current_fitness=current_fitness,
                 existing_workouts=existing_workouts,
                 conversation_history=conversation_history,
+                profile=profile,
             )
 
             if result is None:
@@ -263,6 +268,9 @@ async def refine_workouts_stream(
                 for w in request.current_proposal
             )
 
+            # Get user profile for TSS/calorie calculation
+            profile = repo.get_current_profile()
+
             # Generate refined workouts
             result = await generate_workouts_with_context(
                 user_prompt=f"{proposal_context}\n\nUser refinement request: {request.refinement}",
@@ -271,6 +279,7 @@ async def refine_workouts_stream(
                 existing_workouts=existing_workouts,
                 conversation_history=full_history,
                 is_refinement=True,
+                profile=profile,
             )
 
             if result is None:
@@ -321,6 +330,7 @@ async def accept_proposal(
                 description=workout.description,
                 target_duration_s=workout.target_duration_minutes * 60 if workout.target_duration_minutes else None,
                 target_tss=workout.target_tss,
+                target_calories=workout.target_calories,
             )
             if updated:
                 saved_workouts.append(updated)
@@ -334,6 +344,7 @@ async def accept_proposal(
                 description=workout.description,
                 target_duration_s=workout.target_duration_minutes * 60 if workout.target_duration_minutes else None,
                 target_tss=workout.target_tss,
+                target_calories=workout.target_calories,
                 status="planned",
             )
             workout_id = repo.insert_planned_workout(planned_workout)

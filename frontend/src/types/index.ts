@@ -133,6 +133,7 @@ export interface CalendarActivity {
   duration_seconds: number
   distance_meters: number | null
   tss: number | null
+  calories: number | null
 }
 
 export interface CalendarPlannedWorkout {
@@ -143,6 +144,7 @@ export interface CalendarPlannedWorkout {
   description: string | null
   target_duration_s: number | null
   target_tss: number | null
+  target_calories: number | null
   status: string
   completed_activity_id: number | null
 }
@@ -180,6 +182,7 @@ export interface PlannedWorkout {
   target_duration_s: number | null
   target_distance_m: number | null
   target_tss: number | null
+  target_calories: number | null
   target_hr_zone: number | null
   target_pace_minkm: number | null
   status: string
@@ -287,6 +290,7 @@ export interface ProposedWorkout {
   description: string | null
   target_duration_minutes: number
   target_tss: number | null
+  target_calories: number | null
   existing_workout_id?: number | null  // Set if editing an existing workout
 }
 
@@ -498,4 +502,14 @@ export interface MergePainLocationsRequest {
 
 export interface MergePainLocationsResponse {
   updated_count: number
+}
+
+// Projection types
+export interface ProjectedDataPoint {
+  date: string
+  ctlProjected: number
+  atlProjected: number
+  tsbProjected: number
+  plannedTss: number
+  isRestDay: boolean
 }

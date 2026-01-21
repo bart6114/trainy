@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 -- Schema version tracking
@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS planned_workouts (
     target_duration_s REAL,
     target_distance_m REAL,
     target_tss REAL,
+    target_calories INTEGER,
     target_hr_zone INTEGER,
     target_pace_minkm REAL,
 
@@ -241,6 +242,9 @@ def _apply_migrations(conn: sqlite3.Connection, from_version: int, to_version: i
 
     if from_version < 4 <= to_version:
         _migrate_v3_to_v4(conn)
+
+    if from_version < 5 <= to_version:
+        _migrate_v4_to_v5(conn)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (to_version,))
     conn.commit()
@@ -363,3 +367,11 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
     """)
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_morning_checkin_date ON morning_checkin(checkin_date)")
+
+
+def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """Migration from v4 to v5: Add target_calories to planned_workouts."""
+    try:
+        conn.execute("ALTER TABLE planned_workouts ADD COLUMN target_calories INTEGER")
+    except sqlite3.OperationalError:
+        pass  # Column already exists

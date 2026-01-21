@@ -136,6 +136,7 @@ class PlannedWorkout(BaseModel):
     target_duration_s: Optional[float] = None
     target_distance_m: Optional[float] = None
     target_tss: Optional[float] = None
+    target_calories: Optional[int] = None
     target_hr_zone: Optional[int] = None
     target_pace_minkm: Optional[float] = None
 

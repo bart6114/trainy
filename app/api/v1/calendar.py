@@ -29,6 +29,7 @@ def _make_calendar_activity(activity, metrics) -> CalendarActivity:
         duration_seconds=activity.duration_seconds,
         distance_meters=activity.distance_meters,
         tss=metrics.tss if metrics else None,
+        calories=activity.calories,
     )
 
 
@@ -42,6 +43,7 @@ def _make_calendar_planned_workout(workout: PlannedWorkout) -> CalendarPlannedWo
         description=workout.description,
         target_duration_s=workout.target_duration_s,
         target_tss=workout.target_tss,
+        target_calories=workout.target_calories,
         status=workout.status,
         completed_activity_id=workout.completed_activity_id,
     )

@@ -14,6 +14,7 @@ class CalendarActivity(BaseModel):
     duration_seconds: float
     distance_meters: Optional[float] = None
     tss: Optional[float] = None
+    calories: Optional[int] = None
 
 
 class CalendarPlannedWorkout(BaseModel):
@@ -26,6 +27,7 @@ class CalendarPlannedWorkout(BaseModel):
     description: Optional[str] = None
     target_duration_s: Optional[float] = None
     target_tss: Optional[float] = None
+    target_calories: Optional[int] = None
     status: str
     completed_activity_id: Optional[int] = None
 

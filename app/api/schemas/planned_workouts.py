@@ -23,6 +23,7 @@ class WorkoutProposalItem(BaseModel):
     description: Optional[str] = None
     target_duration_minutes: int
     target_tss: Optional[int] = None
+    target_calories: Optional[int] = None
     existing_workout_id: Optional[int] = None  # Set if editing an existing workout
 
 
@@ -60,6 +61,7 @@ class PlannedWorkoutResponse(BaseModel):
     target_duration_s: Optional[float] = None
     target_distance_m: Optional[float] = None
     target_tss: Optional[float] = None
+    target_calories: Optional[int] = None
     target_hr_zone: Optional[int] = None
     target_pace_minkm: Optional[float] = None
     status: str
