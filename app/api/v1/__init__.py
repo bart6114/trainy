@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from . import activities, metrics, profile, calendar, planned_workouts, adherence, import_
+from . import activities, metrics, profile, calendar, planned_workouts, adherence, import_, data, analytics
 
 api_v1_router = APIRouter(prefix="/api/v1", tags=["v1"])
 
@@ -13,5 +13,7 @@ api_v1_router.include_router(calendar.router, prefix="/calendar", tags=["calenda
 api_v1_router.include_router(planned_workouts.router, prefix="/planned-workouts", tags=["planned-workouts"])
 api_v1_router.include_router(adherence.router, prefix="/adherence", tags=["adherence"])
 api_v1_router.include_router(import_.router, prefix="/import", tags=["import"])
+api_v1_router.include_router(data.router, prefix="/data", tags=["data"])
+api_v1_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 
 __all__ = ["api_v1_router"]

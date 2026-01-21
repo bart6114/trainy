@@ -29,3 +29,21 @@ class SuccessResponse(BaseModel):
 
     success: bool = True
     message: Optional[str] = None
+
+
+class DataStats(BaseModel):
+    """Data statistics for deletion confirmation."""
+
+    activities: int
+    planned_workouts: int
+    activity_metrics: int
+    daily_metrics: int
+    workout_feedback: int
+
+
+class DeleteResponse(BaseModel):
+    """Response from a delete operation."""
+
+    success: bool = True
+    deleted: dict[str, int]
+    message: Optional[str] = None

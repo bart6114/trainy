@@ -1,6 +1,7 @@
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,6 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { PaceInput } from '@/components/ui/pace-input'
 import { useProfile, useUpdateProfile, useDetectMaxHR } from '@/hooks/useProfile'
 import { useRecalculate } from '@/hooks/useRecalculate'
+import { TrendingUp } from 'lucide-react'
 
 const profileSchema = z.object({
   ftp: z.coerce.number().min(50).max(500),
@@ -85,7 +87,14 @@ export function ThresholdsForm() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="ftp">FTP (watts)</Label>
-              <Input id="ftp" type="number" {...register('ftp')} />
+              <div className="flex gap-2">
+                <Input id="ftp" type="number" {...register('ftp')} />
+                <Link to="/analytics">
+                  <Button type="button" variant="outline" title="View eFTP in Analytics">
+                    <TrendingUp className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
               {errors.ftp && <p className="text-sm text-destructive">{errors.ftp.message}</p>}
             </div>
             <div className="space-y-2">
@@ -154,7 +163,7 @@ export function ThresholdsForm() {
             <Button type="submit" disabled={!isDirty || updateProfile.isPending || isRecalculating}>
               {updateProfile.isPending ? 'Saving...' : 'Save Thresholds'}
             </Button>
-            {(profile?.metrics_dirty || isRecalculating) && !isRecalculating && (
+            {!isRecalculating && (
               <Button type="button" variant="outline" onClick={handleRecalculate}>
                 Recalculate Metrics
               </Button>

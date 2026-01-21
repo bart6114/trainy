@@ -3,6 +3,7 @@
 import asyncio
 import json
 from datetime import date, timedelta
+from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -13,6 +14,7 @@ from trainy.database.models import ActivityMetrics
 from trainy.metrics import calculate_tss
 from trainy.metrics.training_load import calculate_training_load
 from trainy.metrics.efficiency import calculate_efficiency_factor, calculate_variability_index
+from trainy.importers.fit_importer import extract_power_samples_from_fit, calculate_all_peak_powers
 from app.dependencies import get_repo
 from app.api.schemas.metrics import (
     CurrentMetricsResponse,
@@ -132,7 +134,7 @@ async def recalculate_metrics(
     # Get user profile for TSS calculations
     profile = repo.get_current_profile()
 
-    # Step 1: Recalculate activity metrics (TSS, EF, VI)
+    # Step 1: Recalculate activity metrics (TSS, EF, VI, Peak Powers)
     activities = repo.get_all_activities()
     activity_count = 0
 
@@ -144,6 +146,14 @@ async def recalculate_metrics(
         ef = calculate_efficiency_factor(activity)
         vi = calculate_variability_index(activity)
 
+        # Calculate peak powers for cycling activities
+        peak_powers = {}
+        if activity.activity_type == "cycle" and activity.fit_file_path:
+            fit_path = Path(activity.fit_file_path)
+            power_samples = extract_power_samples_from_fit(fit_path)
+            if power_samples:
+                peak_powers = calculate_all_peak_powers(power_samples)
+
         # Store activity metrics
         metrics = ActivityMetrics(
             activity_id=activity.id,
@@ -152,6 +162,10 @@ async def recalculate_metrics(
             intensity_factor=intensity_factor,
             efficiency_factor=ef,
             variability_index=vi,
+            peak_power_5s=peak_powers.get("peak_power_5s"),
+            peak_power_1min=peak_powers.get("peak_power_1min"),
+            peak_power_5min=peak_powers.get("peak_power_5min"),
+            peak_power_20min=peak_powers.get("peak_power_20min"),
         )
         repo.insert_activity_metrics(metrics)
         activity_count += 1
@@ -214,7 +228,7 @@ async def recalculate_generator(repo: Repository) -> AsyncIterator[dict]:
     }
     await asyncio.sleep(0)
 
-    # Phase 1: Process activities (TSS, EF, VI)
+    # Phase 1: Process activities (TSS, EF, VI, Peak Powers)
     for i, activity in enumerate(activities, 1):
         # Calculate TSS
         tss, method, intensity_factor = calculate_tss(activity, profile)
@@ -222,6 +236,14 @@ async def recalculate_generator(repo: Repository) -> AsyncIterator[dict]:
         # Calculate efficiency metrics
         ef = calculate_efficiency_factor(activity)
         vi = calculate_variability_index(activity)
+
+        # Calculate peak powers for cycling activities
+        peak_powers = {}
+        if activity.activity_type == "cycle" and activity.fit_file_path:
+            fit_path = Path(activity.fit_file_path)
+            power_samples = extract_power_samples_from_fit(fit_path)
+            if power_samples:
+                peak_powers = calculate_all_peak_powers(power_samples)
 
         # Store activity metrics
         metrics = ActivityMetrics(
@@ -231,6 +253,10 @@ async def recalculate_generator(repo: Repository) -> AsyncIterator[dict]:
             intensity_factor=intensity_factor,
             efficiency_factor=ef,
             variability_index=vi,
+            peak_power_5s=peak_powers.get("peak_power_5s"),
+            peak_power_1min=peak_powers.get("peak_power_1min"),
+            peak_power_5min=peak_powers.get("peak_power_5min"),
+            peak_power_20min=peak_powers.get("peak_power_20min"),
         )
         repo.insert_activity_metrics(metrics)
 

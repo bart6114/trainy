@@ -328,3 +328,39 @@ export interface QuestionEvent {
 export interface ErrorEvent {
   message: string
 }
+
+// Analytics types
+export interface PowerCurvePoint {
+  duration_seconds: number
+  duration_label: string
+  best_watts: number | null
+  best_watts_per_kg: number | null
+  activity_id: number | null
+  activity_date: string | null
+}
+
+export interface PowerCurveResponse {
+  start_date: string
+  end_date: string
+  weight_kg: number
+  ftp: number
+  eftp: number | null
+  w_prime: number | null
+  eftp_method: string
+  points: PowerCurvePoint[]
+}
+
+// Data management types
+export interface DataStats {
+  activities: number
+  planned_workouts: number
+  activity_metrics: number
+  daily_metrics: number
+  workout_feedback: number
+}
+
+export interface DeleteResponse {
+  success: boolean
+  deleted: Record<string, number>
+  message: string | null
+}

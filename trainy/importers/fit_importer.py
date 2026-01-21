@@ -13,6 +13,46 @@ from fitparse import FitFile
 from ..database.models import Activity
 
 
+def calculate_peak_power(power_samples: list[float], window_seconds: int) -> Optional[float]:
+    """Calculate peak (best) average power over a rolling window.
+
+    Args:
+        power_samples: List of power values (assumed 1-second samples)
+        window_seconds: Rolling average window size
+
+    Returns:
+        Peak average power in watts, or None if insufficient data
+    """
+    if not power_samples or len(power_samples) < window_seconds:
+        return None
+
+    max_avg = 0.0
+    for i in range(len(power_samples) - window_seconds + 1):
+        window = power_samples[i:i + window_seconds]
+        avg = sum(window) / window_seconds
+        if avg > max_avg:
+            max_avg = avg
+
+    return round(max_avg, 1) if max_avg > 0 else None
+
+
+def calculate_all_peak_powers(power_samples: list[float]) -> dict[str, Optional[float]]:
+    """Calculate peak powers for all standard durations.
+
+    Args:
+        power_samples: List of power values (assumed 1-second samples)
+
+    Returns:
+        Dictionary with peak powers for 5s, 1min, 5min, 20min
+    """
+    return {
+        "peak_power_5s": calculate_peak_power(power_samples, 5),
+        "peak_power_1min": calculate_peak_power(power_samples, 60),
+        "peak_power_5min": calculate_peak_power(power_samples, 300),
+        "peak_power_20min": calculate_peak_power(power_samples, 1200),
+    }
+
+
 def calculate_normalized_power(power_samples: list[float], window_seconds: int = 30) -> Optional[float]:
     """Calculate Normalized Power from power samples.
 
@@ -308,6 +348,33 @@ def _generate_title(activity_type: str, start_time: datetime, session_data: dict
     }
     type_name = type_names.get(activity_type, "Activity")
     return f"{time_of_day} {type_name}"
+
+
+def extract_power_samples_from_fit(path: Path) -> list[float]:
+    """Extract power samples from a FIT file.
+
+    Args:
+        path: Path to the FIT file
+
+    Returns:
+        List of power values (1-second samples)
+    """
+    if not path.exists():
+        return []
+
+    try:
+        fit = FitFile(str(path))
+        power_samples = []
+
+        for record in fit.get_messages("record"):
+            for field in record.fields:
+                if field.name == "power" and field.value is not None:
+                    power_samples.append(field.value)
+                    break
+
+        return power_samples
+    except Exception:
+        return []
 
 
 class FitImporter:

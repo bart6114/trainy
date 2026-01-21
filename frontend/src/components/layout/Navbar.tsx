@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { Activity, Calendar, BarChart3, Target, Settings, BookOpen } from 'lucide-react'
+import { Activity, Calendar, BarChart3, Target, Settings, BookOpen, TrendingUp } from 'lucide-react'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: Calendar },
   { href: '/activities', label: 'Activities', icon: Activity },
   { href: '/progress', label: 'Progress', icon: BarChart3 },
+  { href: '/analytics', label: 'Analytics', icon: TrendingUp },
   { href: '/planning', label: 'Planning', icon: Target },
   { href: '/metrics', label: 'Metrics', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },

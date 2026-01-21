@@ -1,5 +1,6 @@
 import { ThresholdsForm } from '@/components/settings/ThresholdsForm'
 import { ImportSection } from '@/components/settings/ImportSection'
+import { DangerZone } from '@/components/settings/DangerZone'
 
 export function Settings() {
   return (
@@ -13,6 +14,8 @@ export function Settings() {
         <ThresholdsForm />
         <ImportSection />
       </div>
+
+      <DangerZone />
     </div>
   )
 }

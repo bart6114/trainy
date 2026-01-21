@@ -90,3 +90,77 @@ export function getActivityIcon(type: string): string {
       return 'activity'
   }
 }
+
+// Workout intensity types and helpers
+export type WorkoutIntensity = 'low' | 'medium' | 'medium-high' | 'high'
+
+export const intensityBarColors: Record<WorkoutIntensity, string> = {
+  low: 'bg-emerald-400/70 dark:bg-emerald-500/50',
+  medium: 'bg-amber-400/80 dark:bg-amber-500/60',
+  'medium-high': 'bg-orange-400/85 dark:bg-orange-500/65',
+  high: 'bg-red-400/90 dark:bg-red-500/70',
+}
+
+const workoutTypeIntensityMap: Record<string, WorkoutIntensity> = {
+  // Low intensity
+  easy: 'low',
+  recovery: 'low',
+  // Medium intensity
+  tempo: 'medium',
+  endurance: 'medium',
+  base: 'medium',
+  // Medium-high intensity
+  long: 'medium-high',
+  threshold: 'medium-high',
+  // High intensity
+  intervals: 'high',
+  vo2max: 'high',
+  race: 'high',
+  hiit: 'high',
+}
+
+export function getWorkoutIntensity(workoutType: string | null | undefined): WorkoutIntensity | null {
+  if (!workoutType) return null
+  return workoutTypeIntensityMap[workoutType.toLowerCase()] || null
+}
+
+export function getIntensityFromTSS(tss: number | null | undefined): WorkoutIntensity | null {
+  if (tss === null || tss === undefined) return null
+  if (tss < 50) return 'low'
+  if (tss < 80) return 'medium'
+  if (tss < 120) return 'medium-high'
+  return 'high'
+}
+
+const intensityOrder: Record<WorkoutIntensity, number> = {
+  low: 1,
+  medium: 2,
+  'medium-high': 3,
+  high: 4,
+}
+
+export function getDayMaxIntensity(
+  plannedWorkouts: Array<{ workout_type: string | null; target_tss: number | null; status: string }>,
+  activities: Array<{ tss: number | null }>
+): WorkoutIntensity | null {
+  let maxIntensity: WorkoutIntensity | null = null
+
+  // Check planned workouts (only those still planned)
+  for (const workout of plannedWorkouts) {
+    if (workout.status !== 'planned') continue
+    const intensity = getWorkoutIntensity(workout.workout_type) || getIntensityFromTSS(workout.target_tss)
+    if (intensity && (!maxIntensity || intensityOrder[intensity] > intensityOrder[maxIntensity])) {
+      maxIntensity = intensity
+    }
+  }
+
+  // Check completed activities
+  for (const activity of activities) {
+    const intensity = getIntensityFromTSS(activity.tss)
+    if (intensity && (!maxIntensity || intensityOrder[intensity] > intensityOrder[maxIntensity])) {
+      maxIntensity = intensity
+    }
+  }
+
+  return maxIntensity
+}

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCalendarMonth } from '@/hooks/useCalendar'
 import type { CalendarDay } from '@/types'
-import { cn, formatDuration, formatDistance } from '@/lib/utils'
+import { cn, formatDuration, formatDistance, getDayMaxIntensity, intensityBarColors } from '@/lib/utils'
 
 interface ActivityCalendarProps {
   onDateSelect?: (date: Date) => void
@@ -164,13 +164,16 @@ export function ActivityCalendar({ onDateSelect }: ActivityCalendarProps) {
                 {week.map((date) => {
                   const dayData = getDayData(date)
                   const hasActivities = dayData && dayData.activities.length > 0
+                  const dayIntensity = dayData
+                    ? getDayMaxIntensity(dayData.planned_workouts, dayData.activities)
+                    : null
 
                   return (
                     <button
                       key={date.toISOString()}
                       onClick={() => onDateSelect?.(date)}
                       className={cn(
-                        'p-2 rounded-md transition-colors hover:bg-accent',
+                        'relative p-2 rounded-md transition-colors hover:bg-accent',
                         !isSameMonth(date, currentMonth) && 'text-muted-foreground opacity-50',
                         isToday(date) && 'bg-primary text-primary-foreground hover:bg-primary/90',
                         hasActivities && !isToday(date) && 'bg-muted'
@@ -178,6 +181,14 @@ export function ActivityCalendar({ onDateSelect }: ActivityCalendarProps) {
                     >
                       <div className="text-sm">{format(date, 'd')}</div>
                       {getActivityDots(dayData)}
+                      {dayIntensity && (
+                        <div
+                          className={cn(
+                            'absolute bottom-0.5 left-1 right-1 h-0.5 rounded-full',
+                            intensityBarColors[dayIntensity]
+                          )}
+                        />
+                      )}
                     </button>
                   )
                 })}

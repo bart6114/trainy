@@ -755,3 +755,85 @@ class Repository:
         cursor = self.conn.execute("DELETE FROM daily_metrics")
         self.conn.commit()
         return cursor.rowcount
+
+    def get_data_stats(self) -> dict:
+        """Get counts of all data types for deletion confirmation UI."""
+        activities = self.conn.execute("SELECT COUNT(*) FROM activities").fetchone()[0]
+        planned_workouts = self.conn.execute("SELECT COUNT(*) FROM planned_workouts").fetchone()[0]
+        activity_metrics = self.conn.execute("SELECT COUNT(*) FROM activity_metrics").fetchone()[0]
+        daily_metrics = self.conn.execute("SELECT COUNT(*) FROM daily_metrics").fetchone()[0]
+        workout_feedback = self.conn.execute("SELECT COUNT(*) FROM workout_feedback").fetchone()[0]
+        return {
+            "activities": activities,
+            "planned_workouts": planned_workouts,
+            "activity_metrics": activity_metrics,
+            "daily_metrics": daily_metrics,
+            "workout_feedback": workout_feedback,
+        }
+
+    def delete_all_planned_workouts(self) -> int:
+        """Delete all planned workouts and orphaned feedback. Returns count deleted."""
+        # Delete orphaned workout feedback (where activity_id IS NULL)
+        self.conn.execute("DELETE FROM workout_feedback WHERE activity_id IS NULL")
+        # Delete all planned workouts
+        cursor = self.conn.execute("DELETE FROM planned_workouts")
+        self.conn.commit()
+        return cursor.rowcount
+
+    def delete_all_user_data(self) -> dict:
+        """Delete all user data except profile. Returns counts deleted."""
+        # Delete in order respecting foreign keys
+        feedback_count = self.conn.execute("DELETE FROM workout_feedback").rowcount
+        activity_metrics_count = self.conn.execute("DELETE FROM activity_metrics").rowcount
+        daily_metrics_count = self.conn.execute("DELETE FROM daily_metrics").rowcount
+        planned_workouts_count = self.conn.execute("DELETE FROM planned_workouts").rowcount
+        activities_count = self.conn.execute("DELETE FROM activities").rowcount
+        self.conn.commit()
+        return {
+            "activities": activities_count,
+            "planned_workouts": planned_workouts_count,
+            "activity_metrics": activity_metrics_count,
+            "daily_metrics": daily_metrics_count,
+            "workout_feedback": feedback_count,
+        }
+
+    def get_peak_powers_for_range(self, start_date: date, end_date: date) -> list[dict]:
+        """Get best peak powers for each duration within a date range."""
+        cursor = self.conn.execute(
+            """
+            SELECT m.peak_power_5s, m.peak_power_1min, m.peak_power_5min, m.peak_power_20min,
+                   a.id as activity_id, DATE(a.start_time) as activity_date
+            FROM activity_metrics m
+            JOIN activities a ON m.activity_id = a.id
+            WHERE DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+              AND a.activity_type = 'cycle'
+              AND (m.peak_power_5s IS NOT NULL OR m.peak_power_1min IS NOT NULL
+                   OR m.peak_power_5min IS NOT NULL OR m.peak_power_20min IS NOT NULL)
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def delete_activities_only(self) -> dict:
+        """Delete activities and related data, preserving planned workouts. Returns counts deleted."""
+        # Unlink completed activities from planned workouts
+        self.conn.execute("""
+            UPDATE planned_workouts
+            SET completed_activity_id = NULL, status = 'planned'
+            WHERE completed_activity_id IS NOT NULL
+        """)
+        # Delete activity-related feedback
+        feedback_count = self.conn.execute("DELETE FROM workout_feedback WHERE activity_id IS NOT NULL").rowcount
+        # Delete activity metrics (would be cascade but explicit is clearer)
+        activity_metrics_count = self.conn.execute("DELETE FROM activity_metrics").rowcount
+        # Delete daily metrics
+        daily_metrics_count = self.conn.execute("DELETE FROM daily_metrics").rowcount
+        # Delete activities
+        activities_count = self.conn.execute("DELETE FROM activities").rowcount
+        self.conn.commit()
+        return {
+            "activities": activities_count,
+            "activity_metrics": activity_metrics_count,
+            "daily_metrics": daily_metrics_count,
+            "workout_feedback": feedback_count,
+        }
