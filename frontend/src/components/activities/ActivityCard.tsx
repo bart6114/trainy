@@ -43,6 +43,12 @@ export function ActivityCard({ activity, onClick }: ActivityCardProps) {
               <p className="font-medium">{Math.round(activity.avg_power)} W</p>
             </div>
           )}
+          {activity.calories && (
+            <div>
+              <p className="text-muted-foreground">Calories</p>
+              <p className="font-medium">{activity.calories} kcal</p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

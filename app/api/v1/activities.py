@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from trainy.database import Repository
+from trainy.metrics.calories import predict_calories
 from app.dependencies import get_repo
 from app.api.schemas.activities import (
     ActivityResponse,
@@ -14,6 +15,33 @@ from app.api.schemas.activities import (
 router = APIRouter()
 
 
+def _estimate_calories(
+    activity,
+    repo: Repository,
+    profile_weight_kg: float | None,
+) -> int | None:
+    """Estimate calories for an activity if not available from FIT file."""
+    if activity.calories is not None:
+        return activity.calories
+
+    if not activity.duration_seconds or activity.duration_seconds <= 0:
+        return None
+
+    if not profile_weight_kg or profile_weight_kg <= 0:
+        return None
+
+    # Get intensity factor from activity metrics if available
+    metrics = repo.get_activity_metrics(activity.id)
+    intensity_factor = metrics.intensity_factor if metrics and metrics.intensity_factor else 0.75
+
+    return predict_calories(
+        duration_s=activity.duration_seconds,
+        activity_type=activity.activity_type or "other",
+        intensity_factor=intensity_factor,
+        weight_kg=profile_weight_kg,
+    )
+
+
 @router.get("", response_model=ActivityListResponse)
 async def list_activities(
     offset: int = Query(0, ge=0),
@@ -23,6 +51,10 @@ async def list_activities(
     """List activities with pagination."""
     total = repo.get_activity_count()
     activities = repo.get_all_activities(limit=limit, offset=offset)
+
+    # Get user profile for calorie estimation
+    profile = repo.get_current_profile()
+    profile_weight_kg = profile.weight_kg if profile else None
 
     items = [
         ActivityResponse(
@@ -44,7 +76,7 @@ async def list_activities(
             max_power=a.max_power,
             normalized_power=a.normalized_power,
             avg_cadence=a.avg_cadence,
-            calories=a.calories,
+            calories=_estimate_calories(a, repo, profile_weight_kg),
             title=a.title,
             imported_at=a.imported_at,
         )
@@ -72,6 +104,10 @@ async def get_activity(
 
     metrics = repo.get_activity_metrics(activity_id)
 
+    # Get user profile for calorie estimation
+    profile = repo.get_current_profile()
+    profile_weight_kg = profile.weight_kg if profile else None
+
     activity_response = ActivityResponse(
         id=activity.id,
         fit_file_hash=activity.fit_file_hash,
@@ -91,7 +127,7 @@ async def get_activity(
         max_power=activity.max_power,
         normalized_power=activity.normalized_power,
         avg_cadence=activity.avg_cadence,
-        calories=activity.calories,
+        calories=_estimate_calories(activity, repo, profile_weight_kg),
         title=activity.title,
         imported_at=activity.imported_at,
     )

@@ -28,6 +28,7 @@ function formatPower(activity: Activity): { value: string; isNormalized: boolean
 
 export function ActivityTable({ activities, onSelect }: ActivityTableProps) {
   const hasAnyPowerData = activities.some(a => a.normalized_power || a.avg_power)
+  const hasAnyCaloriesData = activities.some(a => a.calories)
 
   return (
     <div className="space-y-2">
@@ -42,6 +43,7 @@ export function ActivityTable({ activities, onSelect }: ActivityTableProps) {
             <TableHead>Speed/Pace</TableHead>
             <TableHead>HR</TableHead>
             {hasAnyPowerData && <TableHead>Power</TableHead>}
+            {hasAnyCaloriesData && <TableHead>Calories</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -78,6 +80,11 @@ export function ActivityTable({ activities, onSelect }: ActivityTableProps) {
                     ) : (
                       power.value
                     )}
+                  </TableCell>
+                )}
+                {hasAnyCaloriesData && (
+                  <TableCell>
+                    {activity.calories ? `${activity.calories} kcal` : '-'}
                   </TableCell>
                 )}
               </TableRow>
