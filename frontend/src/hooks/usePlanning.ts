@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  generateWorkouts,
   getUpcomingWorkouts,
   getWorkoutsForDate,
   deleteWorkout,
@@ -19,18 +18,6 @@ export function useDateWorkouts(date: string) {
     queryKey: ['planned-workouts', 'date', date],
     queryFn: () => getWorkoutsForDate(date),
     enabled: !!date,
-  })
-}
-
-export function useGenerateWorkouts() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (prompt: string) => generateWorkouts(prompt),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['planned-workouts'] })
-      queryClient.invalidateQueries({ queryKey: ['calendar'] })
-    },
   })
 }
 

@@ -14,7 +14,6 @@ from .metrics import (
 from .profile import ProfileResponse, ProfileUpdateRequest, MaxHRDetectionResponse
 from .planned_workouts import (
     PlannedWorkoutResponse,
-    GenerateWorkoutsRequest,
     GeneratedWorkoutsResponse,
     UpcomingWorkoutsResponse,
     DateWorkoutsResponse,
@@ -35,7 +34,6 @@ __all__ = [
     "ProfileUpdateRequest",
     "MaxHRDetectionResponse",
     "PlannedWorkoutResponse",
-    "GenerateWorkoutsRequest",
     "GeneratedWorkoutsResponse",
     "UpcomingWorkoutsResponse",
     "DateWorkoutsResponse",

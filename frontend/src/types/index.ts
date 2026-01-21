@@ -187,10 +187,6 @@ export interface PlannedWorkout {
   created_at: string | null
 }
 
-export interface GenerateWorkoutsRequest {
-  prompt: string
-}
-
 export interface GeneratedWorkoutsResponse {
   workouts: PlannedWorkout[]
   count: number
@@ -275,4 +271,60 @@ export interface RecalculateProgressData {
 export interface RecalculateCompleteData {
   activities_processed: number
   days_processed: number
+}
+
+// Conversational planning types
+export interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ProposedWorkout {
+  date: string
+  activity_type: string
+  workout_type: string | null
+  title: string
+  description: string | null
+  target_duration_minutes: number
+  target_tss: number | null
+}
+
+export interface WorkoutProposal {
+  workouts: ProposedWorkout[]
+  assistant_message: string
+}
+
+export interface GenerateStreamRequest {
+  prompt: string
+  conversation_history: ConversationMessage[]
+}
+
+export interface RefineStreamRequest {
+  refinement: string
+  current_proposal: ProposedWorkout[]
+  conversation_history: ConversationMessage[]
+}
+
+export interface AcceptProposalRequest {
+  workouts: ProposedWorkout[]
+}
+
+// SSE event types
+export interface ThinkingEvent {
+  phase: 'analyzing' | 'generating'
+  message: string
+}
+
+export interface ProposalEvent {
+  workouts: ProposedWorkout[]
+  assistant_message: string
+}
+
+export interface QuestionEvent {
+  message: string
+  options?: string[]
+}
+
+export interface ErrorEvent {
+  message: string
 }

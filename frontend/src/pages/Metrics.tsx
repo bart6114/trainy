@@ -121,6 +121,68 @@ export function Metrics() {
             </p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>ACWR (Acute:Chronic Workload Ratio)</CardTitle>
+            <CardDescription>Injury risk indicator</CardDescription>
+          </CardHeader>
+          <CardContent className="prose prose-sm dark:prose-invert">
+            <p>
+              ACWR = ATL / CTL. It compares your recent training load to your long-term fitness,
+              helping identify injury risk from training spikes.
+            </p>
+            <h4>Risk Zones:</h4>
+            <ul>
+              <li><strong>Undertrained (&lt; 0.8)</strong>: Training may be too light to maintain fitness</li>
+              <li><strong>Optimal (0.8 to 1.3)</strong>: Sweet spot for progressive adaptation</li>
+              <li><strong>Caution (1.3 to 1.5)</strong>: Elevated injury risk, monitor recovery</li>
+              <li><strong>Danger (&gt; 1.5)</strong>: High injury risk, consider reducing load</li>
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Monotony</CardTitle>
+            <CardDescription>Training variation measure</CardDescription>
+          </CardHeader>
+          <CardContent className="prose prose-sm dark:prose-invert">
+            <p>
+              Monotony measures how repetitive your training is over a 7-day period.
+              It's calculated as: Average Daily TSS / Standard Deviation of Daily TSS.
+            </p>
+            <h4>Guidelines:</h4>
+            <ul>
+              <li><strong>&lt; 1.5</strong>: Good variation in training</li>
+              <li><strong>1.5 to 2.0</strong>: Moderate - consider varying intensity</li>
+              <li><strong>&gt; 2.0</strong>: High monotony - increase training variety to reduce overtraining risk</li>
+            </ul>
+            <p>
+              High monotony combined with high training load increases risk of overtraining and illness.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Strain</CardTitle>
+            <CardDescription>Overall training stress indicator</CardDescription>
+          </CardHeader>
+          <CardContent className="prose prose-sm dark:prose-invert">
+            <p>
+              Strain = Weekly TSS x Monotony. It combines training volume with training pattern
+              to give an overall stress indicator.
+            </p>
+            <h4>Guidelines:</h4>
+            <ul>
+              <li><strong>&lt; 2000</strong>: Low strain, sustainable training</li>
+              <li><strong>2000 to 4000</strong>: Moderate strain, normal training block</li>
+              <li><strong>4000 to 6000</strong>: High strain, ensure adequate recovery</li>
+              <li><strong>&gt; 6000</strong>: Very high strain, increased illness and overtraining risk</li>
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

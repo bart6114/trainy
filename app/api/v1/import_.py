@@ -133,7 +133,7 @@ async def import_generator(
             # Calculate TSS
             tss, method, intensity_factor = calculate_tss(activity, profile, activity.raw_fit_data)
             if tss:
-                repo.update_activity_tss(activity_id, tss, method, intensity_factor)
+                repo.update_activity_tss(activity_id, tss, str(method), intensity_factor)
 
             # Try to match with planned workouts for the same date
             tracker = AdherenceTracker(repo)

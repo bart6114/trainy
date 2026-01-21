@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { format, subDays } from 'date-fns'
+import { format, subDays, subYears } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -45,7 +45,21 @@ export function ImportSection() {
               onClick={() => setFromDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))}
               disabled={isRunning}
             >
-              Last Week
+              Last 7d
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setFromDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))}
+              disabled={isRunning}
+            >
+              Last 30d
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setFromDate(format(subYears(new Date(), 1), 'yyyy-MM-dd'))}
+              disabled={isRunning}
+            >
+              Last Year
             </Button>
           </div>
         </div>

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Info } from 'lucide-react'
 import { ActivityCalendar } from '@/components/calendar/ActivityCalendar'
 import { DateActivitiesPanel } from '@/components/calendar/DateActivitiesPanel'
 import { MetricsCard } from '@/components/metrics/MetricsCard'
@@ -6,6 +8,7 @@ import { useCurrentMetrics } from '@/hooks/useMetrics'
 import { useActivities } from '@/hooks/useActivities'
 import { ActivityCard } from '@/components/activities/ActivityCard'
 import { getFormStatusColor, getACWRStatusColor } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 export function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -20,6 +23,15 @@ export function Dashboard() {
       </div>
 
       {/* Metrics Cards */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Training Metrics</h2>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/metrics" className="text-muted-foreground hover:text-foreground">
+            <Info className="h-4 w-4 mr-1" />
+            Learn more
+          </Link>
+        </Button>
+      </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricsCard
           title="Fitness (CTL)"

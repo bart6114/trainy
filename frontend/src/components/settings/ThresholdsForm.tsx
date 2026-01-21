@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { PaceInput } from '@/components/ui/pace-input'
 import { useProfile, useUpdateProfile, useDetectMaxHR } from '@/hooks/useProfile'
 import { useRecalculate } from '@/hooks/useRecalculate'
 
@@ -39,7 +40,7 @@ export function ThresholdsForm() {
     cancelRecalculate,
   } = useRecalculate()
 
-  const { register, handleSubmit, setValue, formState: { errors, isDirty } } = useForm<ProfileFormData>({
+  const { register, handleSubmit, setValue, control, formState: { errors, isDirty } } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
     values: profile ? {
       ftp: profile.ftp,
@@ -112,12 +113,34 @@ export function ThresholdsForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="threshold_pace_minkm">Run Threshold Pace (min/km)</Label>
-              <Input id="threshold_pace_minkm" type="number" step="0.1" {...register('threshold_pace_minkm')} />
+              <Controller
+                name="threshold_pace_minkm"
+                control={control}
+                render={({ field }) => (
+                  <PaceInput
+                    id="threshold_pace_minkm"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
+                )}
+              />
               {errors.threshold_pace_minkm && <p className="text-sm text-destructive">{errors.threshold_pace_minkm.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="swim_threshold_pace">Swim Threshold Pace (min/100m)</Label>
-              <Input id="swim_threshold_pace" type="number" step="0.1" {...register('swim_threshold_pace')} />
+              <Controller
+                name="swim_threshold_pace"
+                control={control}
+                render={({ field }) => (
+                  <PaceInput
+                    id="swim_threshold_pace"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
+                )}
+              />
               {errors.swim_threshold_pace && <p className="text-sm text-destructive">{errors.swim_threshold_pace.message}</p>}
             </div>
             <div className="space-y-2">

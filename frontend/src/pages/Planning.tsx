@@ -1,81 +1,200 @@
-import { useState } from 'react'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, startOfWeek, addDays, isSameDay } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { useGenerateWorkouts, useUpcomingWorkouts, useDeleteWorkout, useSkipWorkout } from '@/hooks/usePlanning'
-import { formatDuration } from '@/lib/utils'
+import { useUpcomingWorkouts, useDeleteWorkout, useSkipWorkout } from '@/hooks/usePlanning'
+import { WorkoutPlanningChat } from '@/components/planning/WorkoutPlanningChat'
+import { formatDuration, formatDistance } from '@/lib/utils'
 import type { PlannedWorkout } from '@/types'
 
-function WorkoutCard({ workout, onDelete, onSkip }: { workout: PlannedWorkout; onDelete: () => void; onSkip: () => void }) {
+interface WeekData {
+  weekStart: Date
+  days: { date: Date; workouts: PlannedWorkout[] }[]
+  totalDuration: number
+  totalDistance: number
+}
+
+function groupWorkoutsByWeek(workouts: PlannedWorkout[]): WeekData[] {
+  const weekMap = new Map<string, WeekData>()
+
+  workouts.forEach(workout => {
+    const date = parseISO(workout.planned_date)
+    const weekStart = startOfWeek(date, { weekStartsOn: 1 }) // Monday
+    const weekKey = format(weekStart, 'yyyy-MM-dd')
+
+    if (!weekMap.has(weekKey)) {
+      const days = Array.from({ length: 7 }, (_, i) => ({
+        date: addDays(weekStart, i),
+        workouts: [] as PlannedWorkout[]
+      }))
+      weekMap.set(weekKey, {
+        weekStart,
+        days,
+        totalDuration: 0,
+        totalDistance: 0
+      })
+    }
+
+    const week = weekMap.get(weekKey)!
+    const dayIndex = week.days.findIndex(d => isSameDay(d.date, date))
+    if (dayIndex >= 0) {
+      week.days[dayIndex].workouts.push(workout)
+    }
+    week.totalDuration += workout.target_duration_s || 0
+    week.totalDistance += workout.target_distance_m || 0
+  })
+
+  return Array.from(weekMap.values()).sort(
+    (a, b) => a.weekStart.getTime() - b.weekStart.getTime()
+  )
+}
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function WorkoutCell({
+  workout,
+  onDelete,
+  onSkip
+}: {
+  workout: PlannedWorkout
+  onDelete: () => void
+  onSkip: () => void
+}) {
   return (
-    <div className="flex items-start justify-between p-4 rounded-md border">
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <Badge variant="outline">{workout.activity_type}</Badge>
-          {workout.workout_type && (
-            <Badge variant="secondary">{workout.workout_type}</Badge>
-          )}
-          <span className="font-medium">{workout.title}</span>
-        </div>
-        <p className="text-sm text-muted-foreground mb-2">
-          {format(parseISO(workout.planned_date), 'EEEE, MMMM d, yyyy')}
-        </p>
-        {workout.description && (
-          <p className="text-sm text-muted-foreground mb-2">{workout.description}</p>
-        )}
-        <div className="flex gap-4 text-sm">
-          {workout.target_duration_s && (
-            <span>Duration: {formatDuration(workout.target_duration_s)}</span>
-          )}
-          {workout.target_tss && (
-            <span>TSS: {Math.round(workout.target_tss)}</span>
-          )}
-        </div>
-      </div>
-      <div className="flex gap-2 ml-4">
-        {workout.status === 'planned' && (
-          <>
-            <Button variant="ghost" size="sm" onClick={onSkip}>
-              Skip
-            </Button>
-            <Button variant="ghost" size="icon" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </>
-        )}
+    <div className="p-1.5 mb-1 rounded border bg-card text-xs">
+      <div className="flex items-center gap-1 mb-0.5">
+        <Badge variant="outline" className="text-[10px] px-1 py-0">
+          {workout.activity_type}
+        </Badge>
         {workout.status === 'completed' && (
-          <Badge className="bg-green-100 text-green-800">Completed</Badge>
+          <Badge className="bg-green-100 text-green-800 text-[10px] px-1 py-0">Done</Badge>
         )}
         {workout.status === 'skipped' && (
-          <Badge variant="secondary">Skipped</Badge>
+          <Badge variant="secondary" className="text-[10px] px-1 py-0">Skipped</Badge>
         )}
+      </div>
+      <p className="font-medium truncate" title={workout.title}>{workout.title}</p>
+      <div className="flex gap-2 text-muted-foreground">
+        {workout.target_duration_s && (
+          <span>{formatDuration(workout.target_duration_s)}</span>
+        )}
+        {workout.target_distance_m && (
+          <span>{formatDistance(workout.target_distance_m)}</span>
+        )}
+      </div>
+      {workout.status === 'planned' && (
+        <div className="flex gap-1 mt-1">
+          <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={onSkip}>
+            Skip
+          </Button>
+          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={onDelete}>
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WeekRow({
+  week,
+  onDelete,
+  onSkip
+}: {
+  week: WeekData
+  onDelete: (id: number) => void
+  onSkip: (id: number) => void
+}) {
+  return (
+    <div className="grid grid-cols-8 border-b last:border-b-0">
+      {week.days.map((day, i) => (
+        <div
+          key={i}
+          className="border-r p-2 min-h-[100px]"
+        >
+          <div className="text-xs text-muted-foreground mb-1">
+            {format(day.date, 'd MMM')}
+          </div>
+          {day.workouts.map(workout => (
+            <WorkoutCell
+              key={workout.id}
+              workout={workout}
+              onDelete={() => onDelete(workout.id)}
+              onSkip={() => onSkip(workout.id)}
+            />
+          ))}
+        </div>
+      ))}
+      {/* Summary column */}
+      <div className="p-2 bg-muted/50">
+        <div className="text-xs font-medium mb-2">Week Total</div>
+        <div className="space-y-1 text-sm">
+          <div>
+            <span className="text-muted-foreground">Time:</span>{' '}
+            <span className="font-medium">{formatDuration(week.totalDuration)}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Dist:</span>{' '}
+            <span className="font-medium">{formatDistance(week.totalDistance)}</span>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
+function CalendarView({
+  workouts,
+  onDelete,
+  onSkip
+}: {
+  workouts: PlannedWorkout[]
+  onDelete: (id: number) => void
+  onSkip: (id: number) => void
+}) {
+  const weeks = groupWorkoutsByWeek(workouts)
+
+  if (weeks.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <p className="text-muted-foreground text-center">
+            No planned workouts yet. Generate some workouts using the form above!
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="border rounded-lg overflow-hidden">
+      {/* Header row */}
+      <div className="grid grid-cols-8 bg-muted border-b">
+        {DAY_NAMES.map(day => (
+          <div key={day} className="p-2 text-sm font-medium text-center border-r">
+            {day}
+          </div>
+        ))}
+        <div className="p-2 text-sm font-medium text-center">Summary</div>
+      </div>
+      {/* Week rows */}
+      {weeks.map(week => (
+        <WeekRow
+          key={format(week.weekStart, 'yyyy-MM-dd')}
+          week={week}
+          onDelete={onDelete}
+          onSkip={onSkip}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function Planning() {
-  const [prompt, setPrompt] = useState('')
   const { data: upcomingWorkouts, isLoading: workoutsLoading } = useUpcomingWorkouts(30)
-  const generateWorkouts = useGenerateWorkouts()
   const deleteWorkout = useDeleteWorkout()
   const skipWorkout = useSkipWorkout()
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return
-    await generateWorkouts.mutateAsync(prompt)
-    setPrompt('')
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && e.metaKey) {
-      e.preventDefault()
-      handleGenerate()
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -84,67 +203,18 @@ export function Planning() {
         <p className="text-muted-foreground">Generate and manage your AI-powered training workouts</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Generate Workouts</CardTitle>
-          <CardDescription>
-            Describe your training goals and preferences. The AI will generate specific workouts for you.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            placeholder="E.g., 'I want to train for a 10K race in 8 weeks. I can run 4 days per week and do 1 strength session.'"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={4}
-            disabled={generateWorkouts.isPending}
-          />
-          <div className="flex justify-between items-center">
-            <p className="text-xs text-muted-foreground">Press Cmd+Enter to generate</p>
-            <Button
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || generateWorkouts.isPending}
-            >
-              {generateWorkouts.isPending ? 'Generating...' : 'Generate Workouts'}
-            </Button>
-          </div>
-          {generateWorkouts.isError && (
-            <p className="text-sm text-destructive">
-              An error occurred. Please make sure the OpenRouter API key is configured and try again.
-            </p>
-          )}
-          {generateWorkouts.isSuccess && (
-            <p className="text-sm text-green-600">
-              Generated {generateWorkouts.data.count} workouts!
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <WorkoutPlanningChat />
 
       <div>
         <h2 className="text-xl font-semibold mb-4">Planned Workouts</h2>
         {workoutsLoading ? (
           <p className="text-muted-foreground">Loading workouts...</p>
-        ) : upcomingWorkouts && upcomingWorkouts.workouts.length > 0 ? (
-          <div className="space-y-3">
-            {upcomingWorkouts.workouts.map((workout) => (
-              <WorkoutCard
-                key={workout.id}
-                workout={workout}
-                onDelete={() => deleteWorkout.mutate(workout.id)}
-                onSkip={() => skipWorkout.mutate(workout.id)}
-              />
-            ))}
-          </div>
         ) : (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-muted-foreground text-center">
-                No planned workouts yet. Generate some workouts using the form above!
-              </p>
-            </CardContent>
-          </Card>
+          <CalendarView
+            workouts={upcomingWorkouts?.workouts ?? []}
+            onDelete={(id) => deleteWorkout.mutate(id)}
+            onSkip={(id) => skipWorkout.mutate(id)}
+          />
         )}
       </div>
     </div>

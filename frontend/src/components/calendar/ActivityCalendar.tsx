@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths } from 'date-fns'
+import { useState, Fragment } from 'react'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCalendarMonth } from '@/hooks/useCalendar'
 import type { CalendarDay } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, formatDuration, formatDistance } from '@/lib/utils'
 
 interface ActivityCalendarProps {
   onDateSelect?: (date: Date) => void
@@ -32,17 +32,70 @@ export function ActivityCalendar({ onDateSelect }: ActivityCalendarProps) {
   const year = currentMonth.getFullYear()
   const month = currentMonth.getMonth() + 1
 
-  const { data, isLoading } = useCalendarMonth(year, month)
+  // Get all weeks that overlap with this month (starting Monday)
+  const monthStart = startOfMonth(currentMonth)
+  const monthEnd = endOfMonth(currentMonth)
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
 
-  const daysInMonth = eachDayOfInterval({
-    start: startOfMonth(currentMonth),
-    end: endOfMonth(currentMonth),
-  })
+  // Determine if we need adjacent months' data
+  const prevMonth = subMonths(currentMonth, 1)
+  const nextMonth = addMonths(currentMonth, 1)
+  const needsPrevMonth = calendarStart.getMonth() !== currentMonth.getMonth()
+  const needsNextMonth = calendarEnd.getMonth() !== currentMonth.getMonth()
+
+  // Fetch current and adjacent months as needed
+  const { data, isLoading } = useCalendarMonth(year, month)
+  const { data: prevData } = useCalendarMonth(
+    prevMonth.getFullYear(),
+    prevMonth.getMonth() + 1
+  )
+  const { data: nextData } = useCalendarMonth(
+    nextMonth.getFullYear(),
+    nextMonth.getMonth() + 1
+  )
+
+  const allDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
+
+  // Group days into weeks
+  const weeks: Date[][] = []
+  for (let i = 0; i < allDays.length; i += 7) {
+    weeks.push(allDays.slice(i, i + 7))
+  }
 
   const getDayData = (date: Date): CalendarDay | undefined => {
-    if (!data) return undefined
     const dateStr = format(date, 'yyyy-MM-dd')
-    return data.days.find((d) => d.date === dateStr)
+    const dateMonth = date.getMonth()
+
+    // Check which month's data to use
+    if (dateMonth === currentMonth.getMonth()) {
+      return data?.days.find((d) => d.date === dateStr)
+    } else if (needsPrevMonth && dateMonth === prevMonth.getMonth()) {
+      return prevData?.days.find((d) => d.date === dateStr)
+    } else if (needsNextMonth && dateMonth === nextMonth.getMonth()) {
+      return nextData?.days.find((d) => d.date === dateStr)
+    }
+    return undefined
+  }
+
+  // Calculate week totals
+  const getWeekTotals = (weekDays: Date[]) => {
+    let totalDistance = 0
+    let totalDuration = 0
+    let totalTss = 0
+
+    for (const day of weekDays) {
+      const dayData = getDayData(day)
+      if (dayData) {
+        totalTss += dayData.total_tss
+        for (const activity of dayData.activities) {
+          totalDuration += activity.duration_seconds
+          totalDistance += activity.distance_meters || 0
+        }
+      }
+    }
+
+    return { totalDistance, totalDuration, totalTss }
   }
 
   const getActivityDots = (dayData?: CalendarDay) => {
@@ -93,33 +146,69 @@ export function ActivityCalendar({ onDateSelect }: ActivityCalendarProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-7 gap-1 text-center">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+        <div className="grid grid-cols-8 gap-1 text-center">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
             <div key={day} className="text-xs font-medium text-muted-foreground py-2">
               {day}
             </div>
           ))}
-          {Array.from({ length: startOfMonth(currentMonth).getDay() }).map((_, i) => (
-            <div key={`empty-${i}`} />
-          ))}
-          {daysInMonth.map((date) => {
-            const dayData = getDayData(date)
-            const hasActivities = dayData && dayData.activities.length > 0
+          <div className="text-xs font-medium text-muted-foreground py-2">
+            Week
+          </div>
+          {weeks.map((week, weekIndex) => {
+            const weekTotals = getWeekTotals(week)
+            const hasWeekData = weekTotals.totalDistance > 0 || weekTotals.totalDuration > 0 || weekTotals.totalTss > 0
 
             return (
-              <button
-                key={date.toISOString()}
-                onClick={() => onDateSelect?.(date)}
-                className={cn(
-                  'p-2 rounded-md transition-colors hover:bg-accent',
-                  !isSameMonth(date, currentMonth) && 'text-muted-foreground',
-                  isToday(date) && 'bg-primary text-primary-foreground hover:bg-primary/90',
-                  hasActivities && !isToday(date) && 'bg-muted'
-                )}
-              >
-                <div className="text-sm">{format(date, 'd')}</div>
-                {getActivityDots(dayData)}
-              </button>
+              <Fragment key={`week-row-${weekIndex}`}>
+                {week.map((date) => {
+                  const dayData = getDayData(date)
+                  const hasActivities = dayData && dayData.activities.length > 0
+
+                  return (
+                    <button
+                      key={date.toISOString()}
+                      onClick={() => onDateSelect?.(date)}
+                      className={cn(
+                        'p-2 rounded-md transition-colors hover:bg-accent',
+                        !isSameMonth(date, currentMonth) && 'text-muted-foreground opacity-50',
+                        isToday(date) && 'bg-primary text-primary-foreground hover:bg-primary/90',
+                        hasActivities && !isToday(date) && 'bg-muted'
+                      )}
+                    >
+                      <div className="text-sm">{format(date, 'd')}</div>
+                      {getActivityDots(dayData)}
+                    </button>
+                  )
+                })}
+                <div
+                  key={`week-${weekIndex}`}
+                  className={cn(
+                    'p-1 rounded-md text-left text-xs border-l border-border',
+                    hasWeekData && 'bg-muted/50'
+                  )}
+                >
+                  {hasWeekData ? (
+                    <div className="space-y-0.5">
+                      {weekTotals.totalDistance > 0 && (
+                        <div className="text-muted-foreground truncate">
+                          {formatDistance(weekTotals.totalDistance)}
+                        </div>
+                      )}
+                      {weekTotals.totalDuration > 0 && (
+                        <div className="text-muted-foreground truncate">
+                          {formatDuration(weekTotals.totalDuration)}
+                        </div>
+                      )}
+                      {weekTotals.totalTss > 0 && (
+                        <div className="text-muted-foreground truncate">
+                          {Math.round(weekTotals.totalTss)} TSS
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </Fragment>
             )
           })}
         </div>

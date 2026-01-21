@@ -45,32 +45,72 @@ class WorkoutSchema(BaseModel):
     target_tss: Optional[int] = None
 
 
-class WorkoutsResponse(BaseModel):
-    """Schema for AI-generated workouts response."""
+class WorkoutsWithExplanationResponse(BaseModel):
+    """Schema for AI-generated workouts with explanation."""
 
     workouts: list[WorkoutSchema]
+    explanation: str
 
 
-async def generate_workouts(
+class AnalysisResponse(BaseModel):
+    """AI's analysis - either ready to generate or needs clarification."""
+
+    ready_to_generate: bool
+    clarifying_question: str | None = None
+    question_options: list[str] | None = None
+
+
+async def validate_api_key() -> bool:
+    """Validate that the OpenRouter API key works."""
+    if not settings.has_openrouter_key:
+        return False
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                },
+                timeout=10.0,
+            )
+            return response.status_code == 200
+    except Exception:
+        return False
+
+
+async def generate_workouts_with_context(
     user_prompt: str,
     recent_activities: list[dict],
     current_fitness: dict,
-) -> Optional[list[PlannedWorkout]]:
-    """Generate workouts using OpenRouter API.
+    existing_workouts: list[dict],
+    conversation_history: list[dict],
+    is_refinement: bool = False,
+) -> Optional[tuple[list[PlannedWorkout], str]]:
+    """Generate workouts with existing workout context and conversation history.
 
     Args:
         user_prompt: User's training goal description
         recent_activities: Summary of recent activities
         current_fitness: Current CTL/ATL/TSB values
+        existing_workouts: Already planned workouts (to avoid conflicts)
+        conversation_history: Previous messages in the conversation
+        is_refinement: Whether this is refining an existing proposal
 
     Returns:
-        List of PlannedWorkout objects ready for DB insertion, or None if generation fails
+        Tuple of (list of PlannedWorkout objects, assistant explanation) or None if generation fails
     """
     if not settings.has_openrouter_key:
         return None
 
-    # Build context for the AI
-    context = _build_context(user_prompt, recent_activities, current_fitness)
+    # Build context including existing workouts
+    context = _build_context_with_existing(
+        user_prompt,
+        recent_activities,
+        current_fitness,
+        existing_workouts,
+        is_refinement,
+    )
 
     # Build the system prompt
     system_prompt = """You are an expert endurance coach creating personalized training workouts.
@@ -81,6 +121,7 @@ You create workouts that:
 - Balance different workout types (easy, tempo, intervals, long)
 - Consider the athlete's current fitness level (CTL/ATL/TSB)
 - Are specific and actionable
+- Consider already planned workouts (multiple workouts per day are allowed)
 
 When creating workouts:
 - Easy runs: HR Zone 2, conversational pace
@@ -89,7 +130,19 @@ When creating workouts:
 - Long runs: HR Zone 2, building aerobic base
 - Recovery: Very easy or complete rest
 
-Always respond with a valid JSON object containing an array of workouts."""
+Always respond with a valid JSON object containing:
+1. An array of workouts
+2. A brief explanation of your plan (2-3 sentences max)"""
+
+    # Build messages with conversation history
+    messages = [{"role": "system", "content": system_prompt}]
+
+    # Add conversation history
+    for msg in conversation_history:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
+    # Add current request
+    messages.append({"role": "user", "content": context})
 
     # Make API request with structured outputs
     try:
@@ -101,17 +154,16 @@ Always respond with a valid JSON object containing an array of workouts."""
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "anthropic/claude-sonnet-4",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": context},
-                    ],
+                    "model": "google/gemini-3-flash-preview",
+                    "messages": messages,
                     "response_format": {
                         "type": "json_schema",
                         "json_schema": {
-                            "name": "workouts",
+                            "name": "workouts_with_explanation",
                             "strict": True,
-                            "schema": _make_schema_strict(WorkoutsResponse.model_json_schema()),
+                            "schema": _make_schema_strict(
+                                WorkoutsWithExplanationResponse.model_json_schema()
+                            ),
                         },
                     },
                     "max_tokens": 8000,
@@ -125,12 +177,10 @@ Always respond with a valid JSON object containing an array of workouts."""
 
             result = response.json()
 
-            # Check for error in response
             if "error" in result:
                 print(f"OpenRouter returned error: {result['error']}")
                 return None
 
-            # Extract content from response
             choices = result.get("choices", [])
             if not choices:
                 print(f"OpenRouter returned no choices: {result}")
@@ -142,10 +192,10 @@ Always respond with a valid JSON object containing an array of workouts."""
                 return None
 
             data = json.loads(content)
-            workouts_response = WorkoutsResponse.model_validate(data)
+            workouts_response = WorkoutsWithExplanationResponse.model_validate(data)
 
             # Convert to PlannedWorkout models
-            return [
+            workouts = [
                 PlannedWorkout(
                     planned_date=w.date,
                     activity_type=w.activity_type,
@@ -159,18 +209,184 @@ Always respond with a valid JSON object containing an array of workouts."""
                 for w in workouts_response.workouts
             ]
 
+            return (workouts, workouts_response.explanation)
+
     except Exception as e:
         print(f"Error generating workouts: {e}")
         return None
 
 
-def _build_context(
+async def analyze_before_generation(
     user_prompt: str,
     recent_activities: list[dict],
     current_fitness: dict,
+    existing_workouts: list[dict],
+    conversation_history: list[dict],
+) -> Optional[AnalysisResponse]:
+    """First-pass analysis to determine if clarification needed.
+
+    Args:
+        user_prompt: User's training goal description
+        recent_activities: Summary of recent activities
+        current_fitness: Current CTL/ATL/TSB values
+        existing_workouts: Already planned workouts (to avoid conflicts)
+        conversation_history: Previous messages in the conversation
+
+    Returns:
+        AnalysisResponse indicating if ready to generate or needs clarification
+    """
+    if not settings.has_openrouter_key:
+        return None
+
+    # Build context string
+    context = _build_analysis_context(
+        user_prompt,
+        recent_activities,
+        current_fitness,
+        existing_workouts,
+    )
+
+    system_prompt = """You are analyzing a workout planning request. Review the context and decide:
+
+1. If you need clarification before creating workouts, respond with:
+   - ready_to_generate: false
+   - clarifying_question: Your question
+   - question_options: ["Option 1", "Option 2", ...] (optional, 2-4 options)
+
+2. If you have enough information, respond with:
+   - ready_to_generate: true
+
+Consider asking about:
+- Conflicts with existing planned workouts (e.g., "You have workouts planned on Mon/Wed. Should I schedule around those or add additional sessions?")
+- Ambiguous duration or frequency (e.g., "How many days per week would you like to train?")
+- Missing key info (goal race date, available days, etc.)
+- Significant fitness concerns (very negative TSB, recent overtraining)
+
+Be concise. Only ask if genuinely needed - don't ask just to be thorough.
+If the user has already answered a question in the conversation history, don't ask it again."""
+
+    # Build messages with conversation history
+    messages = [{"role": "system", "content": system_prompt}]
+
+    # Add conversation history
+    for msg in conversation_history:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
+    # Add current request
+    messages.append({"role": "user", "content": context})
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "google/gemini-3-flash-preview",
+                    "messages": messages,
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "analysis_response",
+                            "strict": True,
+                            "schema": _make_schema_strict(
+                                AnalysisResponse.model_json_schema()
+                            ),
+                        },
+                    },
+                    "max_tokens": 500,
+                },
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                print(f"OpenRouter API error: {response.status_code} - {response.text}")
+                return None
+
+            result = response.json()
+
+            if "error" in result:
+                print(f"OpenRouter returned error: {result['error']}")
+                return None
+
+            choices = result.get("choices", [])
+            if not choices:
+                print(f"OpenRouter returned no choices: {result}")
+                return None
+
+            content = choices[0].get("message", {}).get("content", "")
+            if not content:
+                print(f"OpenRouter returned empty content: {result}")
+                return None
+
+            data = json.loads(content)
+            return AnalysisResponse.model_validate(data)
+
+    except Exception as e:
+        print(f"Error in analysis: {e}")
+        return None
+
+
+def _build_analysis_context(
+    user_prompt: str,
+    recent_activities: list[dict],
+    current_fitness: dict,
+    existing_workouts: list[dict],
 ) -> str:
-    """Build the context string for the AI."""
-    # Format recent activities with full metrics
+    """Build the context string for analysis phase."""
+    today = date.today()
+
+    # Format existing workouts
+    existing_summary = ""
+    if existing_workouts:
+        lines = []
+        for w in existing_workouts:
+            duration_str = f"{w.get('target_duration_min', '?')}min" if w.get('target_duration_min') else ""
+            lines.append(
+                f"- {w.get('date', 'N/A')}: {w.get('title', 'N/A')} "
+                f"({w.get('activity_type', 'N/A')}/{w.get('workout_type', 'N/A')}) {duration_str}"
+            )
+        existing_summary = "\n".join(lines)
+    else:
+        existing_summary = "No existing planned workouts."
+
+    # Format current fitness
+    fitness_summary = f"""CTL: {current_fitness.get('ctl', 0):.1f}, ATL: {current_fitness.get('atl', 0):.1f}, TSB: {current_fitness.get('tsb', 0):.1f}"""
+
+    # Recent activity count
+    activity_count = len(recent_activities) if recent_activities else 0
+
+    return f"""Analyze this workout planning request:
+
+## User Request
+{user_prompt}
+
+## Today's Date
+{today.isoformat()}
+
+## Current Fitness
+{fitness_summary}
+
+## Recent Training
+{activity_count} activities in the last 60 days.
+
+## Already Planned Workouts
+{existing_summary}
+
+Decide if you have enough information to generate workouts, or if you need to ask a clarifying question first."""
+
+
+def _build_context_with_existing(
+    user_prompt: str,
+    recent_activities: list[dict],
+    current_fitness: dict,
+    existing_workouts: list[dict],
+    is_refinement: bool,
+) -> str:
+    """Build the context string including existing workouts."""
+    # Format recent activities
     activities_summary = ""
     if recent_activities:
         lines = []
@@ -196,9 +412,33 @@ TSB (Training Stress Balance): {current_fitness.get('tsb', 0):.1f}
 30-day TSS: {current_fitness.get('tss_30day', 0):.0f}
 """
 
+    # Format existing workouts
+    existing_summary = ""
+    if existing_workouts:
+        lines = []
+        for w in existing_workouts:
+            duration_str = f"{w.get('target_duration_min', '?')}min" if w.get('target_duration_min') else ""
+            lines.append(
+                f"- {w.get('date', 'N/A')}: {w.get('title', 'N/A')} "
+                f"({w.get('activity_type', 'N/A')}/{w.get('workout_type', 'N/A')}) {duration_str}"
+            )
+        existing_summary = "\n".join(lines)
+    else:
+        existing_summary = "No existing planned workouts."
+
     today = date.today()
 
-    return f"""Create training workouts based on the following:
+    if is_refinement:
+        instruction = """Please modify the workout plan based on the user's feedback.
+Keep what works, adjust what they asked to change.
+Make sure the overall plan still makes sense after the changes."""
+    else:
+        instruction = """Please create specific workouts for each day.
+Determine the appropriate duration based on the user's request (default to 4 weeks if not specified).
+Include appropriate progression and recovery.
+Consider the already planned workouts when creating the schedule."""
+
+    return f"""{"Refine" if is_refinement else "Create"} training workouts based on the following:
 
 ## User Request
 {user_prompt}
@@ -212,40 +452,11 @@ TSB (Training Stress Balance): {current_fitness.get('tsb', 0):.1f}
 ## Recent Training (last 60 days)
 {activities_summary}
 
-Please create specific workouts for each day.
-Determine the appropriate duration based on the user's request (default to 4 weeks if not specified).
-Include appropriate progression and recovery.
+## Already Planned Workouts
+{existing_summary}
 
-Respond with a JSON object containing a "workouts" array:
-{{
-  "workouts": [
-    {{
-      "date": "YYYY-MM-DD",
-      "activity_type": "run|cycle|swim|strength|rest",
-      "workout_type": "easy|tempo|intervals|long|recovery|rest",
-      "title": "Workout title",
-      "description": "Detailed workout description",
-      "target_duration_minutes": 45,
-      "target_tss": 50
-    }}
-  ]
-}}"""
+{instruction}
 
-
-async def validate_api_key() -> bool:
-    """Validate that the OpenRouter API key works."""
-    if not settings.has_openrouter_key:
-        return False
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://openrouter.ai/api/v1/models",
-                headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
-                },
-                timeout=10.0,
-            )
-            return response.status_code == 200
-    except Exception:
-        return False
+Respond with a JSON object containing:
+1. "workouts": array of workout objects
+2. "explanation": brief explanation of your plan (2-3 sentences)"""

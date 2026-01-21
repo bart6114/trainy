@@ -1,17 +1,12 @@
 import { get, post, del, patch } from './client'
 import type {
-  GenerateWorkoutsRequest,
   GeneratedWorkoutsResponse,
   UpcomingWorkoutsResponse,
   DateWorkoutsResponse,
   SuccessResponse,
+  AcceptProposalRequest,
+  ProposedWorkout,
 } from '@/types'
-
-export async function generateWorkouts(prompt: string): Promise<GeneratedWorkoutsResponse> {
-  return post<GeneratedWorkoutsResponse, GenerateWorkoutsRequest>('/planned-workouts/generate', {
-    prompt,
-  })
-}
 
 export async function getUpcomingWorkouts(days: number = 7): Promise<UpcomingWorkoutsResponse> {
   return get<UpcomingWorkoutsResponse>(`/planned-workouts/upcoming?days=${days}`)
@@ -27,4 +22,10 @@ export async function deleteWorkout(id: number): Promise<SuccessResponse> {
 
 export async function skipWorkout(id: number): Promise<SuccessResponse> {
   return patch<SuccessResponse>(`/planned-workouts/${id}/skip`)
+}
+
+export async function acceptProposal(workouts: ProposedWorkout[]): Promise<GeneratedWorkoutsResponse> {
+  return post<GeneratedWorkoutsResponse, AcceptProposalRequest>('/planned-workouts/accept', {
+    workouts,
+  })
 }
