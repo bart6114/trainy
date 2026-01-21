@@ -217,12 +217,15 @@ def parse_fit_file(path: Path, include_raw_data: bool = False) -> Optional[Activ
         else:
             return None
 
-        # Determine activity type
+        # Determine activity type - check sub_sport first for more specific classification
         sport = session_data.get("sport", "generic")
-        if isinstance(sport, str):
+        sub_sport = session_data.get("sub_sport")
+
+        activity_type = "other"
+        if isinstance(sub_sport, str):
+            activity_type = SPORT_TYPE_MAP.get(sub_sport.lower(), "other")
+        if activity_type == "other" and isinstance(sport, str):
             activity_type = SPORT_TYPE_MAP.get(sport.lower(), "other")
-        else:
-            activity_type = "other"
 
         # Calculate end time
         duration = session_data.get("total_elapsed_time") or session_data.get("total_timer_time", 0)
