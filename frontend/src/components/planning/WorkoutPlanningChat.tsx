@@ -111,6 +111,7 @@ function ProposedWorkoutCard({ workout }: { workout: ProposedWorkout }) {
             <span>{formatDuration(workout.target_duration_minutes * 60)}</span>
           )}
           {workout.target_tss && <span>TSS: {workout.target_tss}</span>}
+          {workout.target_calories && <span>{workout.target_calories} kcal</span>}
         </div>
       </div>
     </div>

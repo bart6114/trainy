@@ -70,6 +70,9 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
                       {workout.target_tss && (
                         <span className="text-sm">{Math.round(workout.target_tss)} TSS</span>
                       )}
+                      {workout.target_calories && (
+                        <span className="text-sm">{workout.target_calories} kcal</span>
+                      )}
                       {workout.status === 'completed' && (
                         <Badge className="bg-green-100 text-green-800 text-xs">Done</Badge>
                       )}
@@ -99,9 +102,10 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
                           {activity.distance_meters && ` - ${formatDistance(activity.distance_meters)}`}
                         </div>
                       </div>
-                      {activity.tss && (
-                        <div className="text-sm font-medium">{Math.round(activity.tss)} TSS</div>
-                      )}
+                      <div className="text-sm font-medium flex gap-2">
+                        {activity.tss && <span>{Math.round(activity.tss)} TSS</span>}
+                        {activity.calories && <span>{activity.calories} kcal</span>}
+                      </div>
                     </div>
                     <ActivityFeedbackDisplay activityId={activity.id} />
                   </div>

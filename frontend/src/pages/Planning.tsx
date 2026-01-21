@@ -82,6 +82,9 @@ function WorkoutCell({
         {workout.target_tss && (
           <span>{workout.target_tss} TSS</span>
         )}
+        {workout.target_calories && (
+          <span>{workout.target_calories} kcal</span>
+        )}
         {workout.target_duration_s && (
           <span>{formatDuration(workout.target_duration_s)}</span>
         )}
