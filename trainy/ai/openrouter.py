@@ -9,7 +9,9 @@ import httpx
 from pydantic import BaseModel
 
 from ..config import settings
-from ..database.models import PlannedWorkout
+from ..database.models import PlannedWorkout, UserProfile
+from ..metrics.planned_tss import calculate_planned_tss
+from ..metrics.calories import predict_calories
 
 
 def _make_schema_strict(schema: dict) -> dict:
@@ -42,7 +44,6 @@ class WorkoutSchema(BaseModel):
     title: str
     description: str
     target_duration_minutes: int
-    target_tss: Optional[int] = None
     existing_workout_id: Optional[int] = None  # Set if editing an existing workout
 
 
@@ -87,6 +88,7 @@ async def generate_workouts_with_context(
     existing_workouts: list[dict],
     conversation_history: list[dict],
     is_refinement: bool = False,
+    profile: Optional[UserProfile] = None,
 ) -> Optional[tuple[list[dict], str]]:
     """Generate workouts with existing workout context and conversation history.
 
@@ -97,6 +99,7 @@ async def generate_workouts_with_context(
         existing_workouts: Already planned workouts (to avoid conflicts)
         conversation_history: Previous messages in the conversation
         is_refinement: Whether this is refining an existing proposal
+        profile: User profile with threshold values (for TSS/calorie calculation)
 
     Returns:
         Tuple of (list of workout dicts with existing_workout_id, assistant explanation) or None if generation fails
@@ -201,20 +204,40 @@ Always respond with a valid JSON object containing:
             data = json.loads(content)
             workouts_response = WorkoutsWithExplanationResponse.model_validate(data)
 
-            # Convert to workout dicts (including existing_workout_id for edits)
-            workouts = [
-                {
+            # Convert to workout dicts and calculate TSS/calories
+            workouts = []
+            for w in workouts_response.workouts:
+                duration_s = w.target_duration_minutes * 60
+
+                # Calculate TSS and intensity factor
+                tss, intensity_factor = calculate_planned_tss(
+                    duration_s=duration_s,
+                    activity_type=w.activity_type,
+                    workout_type=w.workout_type,
+                    profile=profile,
+                )
+
+                # Calculate calories if we have weight
+                calories = None
+                if profile and profile.weight_kg > 0:
+                    calories = predict_calories(
+                        duration_s=duration_s,
+                        activity_type=w.activity_type,
+                        intensity_factor=intensity_factor,
+                        weight_kg=profile.weight_kg,
+                    )
+
+                workouts.append({
                     "date": w.date.isoformat(),
                     "activity_type": w.activity_type,
                     "workout_type": w.workout_type,
                     "title": w.title,
                     "description": w.description,
                     "target_duration_minutes": w.target_duration_minutes,
-                    "target_tss": w.target_tss,
+                    "target_tss": round(tss) if tss else None,
+                    "target_calories": calories,
                     "existing_workout_id": w.existing_workout_id,
-                }
-                for w in workouts_response.workouts
-            ]
+                })
 
             return (workouts, workouts_response.explanation)
 
