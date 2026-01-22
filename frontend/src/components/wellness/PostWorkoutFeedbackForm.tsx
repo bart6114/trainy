@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useWellnessSettings, useSubmitActivityFeedback } from '@/hooks/useWellness'
+import { usePainLocations } from '@/hooks/useAnalytics'
 import type { PendingActivityItem } from '@/types'
 
 interface PostWorkoutFeedbackFormProps {
@@ -58,6 +59,9 @@ export function PostWorkoutFeedbackForm({
 }: PostWorkoutFeedbackFormProps) {
   const { data: settings } = useWellnessSettings()
   const submitFeedback = useSubmitActivityFeedback()
+  const { data: painLocationsData } = usePainLocations()
+
+  const painLocationOptions = painLocationsData?.map((p) => p.location) ?? []
 
   const [rpe, setRpe] = useState<number>(5)
   const [sessionFeel, setSessionFeel] = useState<number>(5)
@@ -184,10 +188,11 @@ export function PostWorkoutFeedbackForm({
                 <div className="space-y-3 pl-4 border-l-2 border-muted">
                   <div className="space-y-2">
                     <Label className="text-sm">Location</Label>
-                    <Input
-                      placeholder="e.g., Left knee, Lower back"
+                    <Combobox
+                      placeholder="e.g., Left knee"
                       value={painLocation}
-                      onChange={(e) => setPainLocation(e.target.value)}
+                      onChange={setPainLocation}
+                      options={painLocationOptions}
                     />
                   </div>
                   <div className="space-y-2">
