@@ -1,5 +1,8 @@
 """Activities API endpoints."""
 
+import gzip
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from trainy.database import Repository
@@ -10,6 +13,8 @@ from app.api.schemas.activities import (
     ActivityWithMetricsResponse,
     ActivityListResponse,
     ActivityMetricsResponse,
+    ActivityTrackResponse,
+    TrackPoint,
 )
 
 router = APIRouter()
@@ -151,4 +156,63 @@ async def get_activity(
     return ActivityWithMetricsResponse(
         activity=activity_response,
         metrics=metrics_response,
+    )
+
+
+def _semicircles_to_degrees(semicircles: int | float) -> float:
+    """Convert FIT file semicircles to degrees.
+
+    FIT files store coordinates in semicircles: degrees = semicircles * (180 / 2^31)
+    """
+    return semicircles * (180.0 / 2147483648.0)
+
+
+@router.get("/{activity_id}/track", response_model=ActivityTrackResponse)
+async def get_activity_track(
+    activity_id: int,
+    repo: Repository = Depends(get_repo),
+):
+    """Get GPS track data for an activity."""
+    activity = repo.get_activity_by_id(activity_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if not activity.raw_fit_data:
+        return ActivityTrackResponse(
+            activity_id=activity_id,
+            has_track=False,
+            points=[],
+        )
+
+    # Decompress and parse the raw FIT data
+    try:
+        json_str = gzip.decompress(activity.raw_fit_data).decode("utf-8")
+        raw_data = json.loads(json_str)
+    except (gzip.BadGzipFile, json.JSONDecodeError):
+        return ActivityTrackResponse(
+            activity_id=activity_id,
+            has_track=False,
+            points=[],
+        )
+
+    records = raw_data.get("records", [])
+    points = []
+
+    for record in records:
+        lat = record.get("position_lat")
+        lng = record.get("position_long")
+
+        if lat is not None and lng is not None:
+            # Convert from semicircles to degrees
+            lat_deg = _semicircles_to_degrees(lat)
+            lng_deg = _semicircles_to_degrees(lng)
+
+            # Validate coordinates are in valid range
+            if -90 <= lat_deg <= 90 and -180 <= lng_deg <= 180:
+                points.append(TrackPoint(lat=lat_deg, lng=lng_deg))
+
+    return ActivityTrackResponse(
+        activity_id=activity_id,
+        has_track=len(points) > 0,
+        points=points,
     )

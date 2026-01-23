@@ -7,9 +7,10 @@ import { ActivityFeedbackDisplay } from '@/components/wellness/ActivityFeedbackD
 
 interface DateActivitiesPanelProps {
   date: Date | null
+  onActivityClick?: (activityId: number) => void
 }
 
-export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
+export function DateActivitiesPanel({ date, onActivityClick }: DateActivitiesPanelProps) {
   const dateStr = date ? format(date, 'yyyy-MM-dd') : ''
   const { data, isLoading } = useCalendarDate(dateStr)
 
@@ -90,7 +91,11 @@ export function DateActivitiesPanel({ date }: DateActivitiesPanelProps) {
               <div>
                 <h4 className="text-sm font-medium mb-2 text-muted-foreground">Completed</h4>
                 {data.activities.map((activity) => (
-                  <div key={activity.id} className="py-2 border-b last:border-0">
+                  <div
+                    key={activity.id}
+                    className={`py-2 border-b last:border-0 ${onActivityClick ? 'cursor-pointer hover:bg-muted/50 -mx-2 px-2 rounded transition-colors' : ''}`}
+                    onClick={() => onActivityClick?.(activity.id)}
+                  >
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">

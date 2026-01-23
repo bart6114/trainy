@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Info } from 'lucide-react'
 import { ActivityCalendar } from '@/components/calendar/ActivityCalendar'
 import { DateActivitiesPanel } from '@/components/calendar/DateActivitiesPanel'
+import { ActivityDetailSheet } from '@/components/activities/ActivityDetailSheet'
 import { MetricsCard } from '@/components/metrics/MetricsCard'
 import { WellnessSummary } from '@/components/wellness/WellnessSummary'
 import { useCurrentMetrics } from '@/hooks/useMetrics'
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button'
 
 export function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null)
   const { data: metrics, isLoading: metricsLoading } = useCurrentMetrics()
 
   return (
@@ -81,9 +83,18 @@ export function Dashboard() {
           <ActivityCalendar onDateSelect={setSelectedDate} />
         </div>
         <div>
-          <DateActivitiesPanel date={selectedDate} />
+          <DateActivitiesPanel
+            date={selectedDate}
+            onActivityClick={setSelectedActivityId}
+          />
         </div>
       </div>
+
+      <ActivityDetailSheet
+        activityId={selectedActivityId}
+        open={selectedActivityId !== null}
+        onOpenChange={(open) => !open && setSelectedActivityId(null)}
+      />
     </div>
   )
 }

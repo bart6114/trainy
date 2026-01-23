@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useActivities } from '@/hooks/useActivities'
 import { ActivityTable } from '@/components/activities/ActivityTable'
 import { ActivityCard } from '@/components/activities/ActivityCard'
+import { ActivityDetailSheet } from '@/components/activities/ActivityDetailSheet'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, Grid, List } from 'lucide-react'
 
 export function Activities() {
   const [page, setPage] = useState(0)
   const [view, setView] = useState<'table' | 'cards'>('table')
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null)
   const limit = 20
   const { data, isLoading } = useActivities(page * limit, limit)
 
@@ -35,11 +37,18 @@ export function Activities() {
       ) : data && data.items.length > 0 ? (
         <>
           {view === 'table' ? (
-            <ActivityTable activities={data.items} />
+            <ActivityTable
+              activities={data.items}
+              onSelect={(activity) => setSelectedActivityId(activity.id)}
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {data.items.map((activity) => (
-                <ActivityCard key={activity.id} activity={activity} />
+                <ActivityCard
+                  key={activity.id}
+                  activity={activity}
+                  onClick={() => setSelectedActivityId(activity.id)}
+                />
               ))}
             </div>
           )}
@@ -64,6 +73,12 @@ export function Activities() {
           No activities found. Import some FIT files to get started!
         </div>
       )}
+
+      <ActivityDetailSheet
+        activityId={selectedActivityId}
+        open={selectedActivityId !== null}
+        onOpenChange={(open) => !open && setSelectedActivityId(null)}
+      />
     </div>
   )
 }

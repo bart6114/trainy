@@ -513,3 +513,15 @@ export interface ProjectedDataPoint {
   plannedTss: number
   isRestDay: boolean
 }
+
+// Track/GPS types
+export interface TrackPoint {
+  lat: number
+  lng: number
+}
+
+export interface ActivityTrackResponse {
+  activity_id: number
+  has_track: boolean
+  points: TrackPoint[]
+}

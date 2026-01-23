@@ -1,5 +1,5 @@
 import { get } from './client'
-import type { Activity, ActivityWithMetrics, PaginatedResponse } from '@/types'
+import type { Activity, ActivityWithMetrics, ActivityTrackResponse, PaginatedResponse } from '@/types'
 
 export async function getActivities(
   offset = 0,
@@ -10,4 +10,8 @@ export async function getActivities(
 
 export async function getActivity(id: number): Promise<ActivityWithMetrics> {
   return get<ActivityWithMetrics>(`/activities/${id}`)
+}
+
+export async function getActivityTrack(id: number): Promise<ActivityTrackResponse> {
+  return get<ActivityTrackResponse>(`/activities/${id}/track`)
 }

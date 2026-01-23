@@ -78,3 +78,18 @@ class ActivityListResponse(PaginatedResponse[ActivityResponse]):
     """Paginated list of activities."""
 
     pass
+
+
+class TrackPoint(BaseModel):
+    """A single GPS track point."""
+
+    lat: float
+    lng: float
+
+
+class ActivityTrackResponse(BaseModel):
+    """GPS track data for an activity."""
+
+    activity_id: int
+    has_track: bool
+    points: list[TrackPoint] = []
