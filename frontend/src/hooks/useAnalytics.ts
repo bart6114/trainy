@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getPowerCurve, getInjuryAnalysis, getPainLocations, mergePainLocations } from '@/api/analytics'
+import { getPowerCurve, getInjuryAnalysis, getPainLocations, mergePainLocations, getRowingPRs } from '@/api/analytics'
 import type { MergePainLocationsRequest } from '@/types'
 
 export function usePowerCurve(days = 90) {
@@ -32,5 +32,12 @@ export function useMergePainLocations() {
       queryClient.invalidateQueries({ queryKey: ['analytics', 'injury-analysis'] })
       queryClient.invalidateQueries({ queryKey: ['analytics', 'pain-locations'] })
     },
+  })
+}
+
+export function useRowingPRs(days = 90) {
+  return useQuery({
+    queryKey: ['analytics', 'rowing-prs', days],
+    queryFn: () => getRowingPRs(days),
   })
 }

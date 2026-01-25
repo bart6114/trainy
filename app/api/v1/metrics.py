@@ -14,7 +14,13 @@ from trainy.database.models import ActivityMetrics
 from trainy.metrics import calculate_tss
 from trainy.metrics.training_load import calculate_training_load
 from trainy.metrics.efficiency import calculate_efficiency_factor, calculate_variability_index
-from trainy.importers.fit_importer import extract_power_samples_from_fit, calculate_all_peak_powers
+from trainy.importers.fit_importer import (
+    extract_power_samples_from_fit,
+    calculate_all_peak_powers,
+    extract_distance_time_series,
+    calculate_best_effort_time,
+    calculate_best_effort_distance,
+)
 from app.dependencies import get_repo
 from app.api.schemas.metrics import (
     CurrentMetricsResponse,
@@ -146,13 +152,33 @@ async def recalculate_metrics(
         ef = calculate_efficiency_factor(activity)
         vi = calculate_variability_index(activity)
 
-        # Calculate peak powers for cycling activities
+        # Calculate peak powers for cycling and rowing activities
         peak_powers = {}
-        if activity.activity_type == "cycle" and activity.fit_file_path:
+        rowing_efforts = {}
+        if activity.activity_type in ("cycle", "row") and activity.fit_file_path:
             fit_path = Path(activity.fit_file_path)
-            power_samples = extract_power_samples_from_fit(fit_path)
+            power_samples, sample_interval = extract_power_samples_from_fit(fit_path)
             if power_samples:
-                peak_powers = calculate_all_peak_powers(power_samples)
+                include_rowing = activity.activity_type == "row"
+                peak_powers = calculate_all_peak_powers(power_samples, include_rowing=include_rowing, sample_interval=sample_interval)
+
+            # Calculate rowing best efforts
+            if activity.activity_type == "row":
+                series = extract_distance_time_series(fit_path)
+                if series:
+                    # Distance PRs: best time to cover each distance
+                    rowing_efforts["rowing_500m_time"] = calculate_best_effort_time(series, 500)
+                    rowing_efforts["rowing_1k_time"] = calculate_best_effort_time(series, 1000)
+                    rowing_efforts["rowing_2k_time"] = calculate_best_effort_time(series, 2000)
+                    rowing_efforts["rowing_5k_time"] = calculate_best_effort_time(series, 5000)
+                    rowing_efforts["rowing_10k_time"] = calculate_best_effort_time(series, 10000)
+                    # Time PRs: best distance covered in each duration
+                    rowing_efforts["rowing_1min_distance"] = calculate_best_effort_distance(series, 60)
+                    rowing_efforts["rowing_4min_distance"] = calculate_best_effort_distance(series, 240)
+                    rowing_efforts["rowing_10min_distance"] = calculate_best_effort_distance(series, 600)
+                    rowing_efforts["rowing_20min_distance"] = calculate_best_effort_distance(series, 1200)
+                    rowing_efforts["rowing_30min_distance"] = calculate_best_effort_distance(series, 1800)
+                    rowing_efforts["rowing_60min_distance"] = calculate_best_effort_distance(series, 3600)
 
         # Store activity metrics
         metrics = ActivityMetrics(
@@ -166,6 +192,20 @@ async def recalculate_metrics(
             peak_power_1min=peak_powers.get("peak_power_1min"),
             peak_power_5min=peak_powers.get("peak_power_5min"),
             peak_power_20min=peak_powers.get("peak_power_20min"),
+            peak_power_4min=peak_powers.get("peak_power_4min"),
+            peak_power_30min=peak_powers.get("peak_power_30min"),
+            peak_power_60min=peak_powers.get("peak_power_60min"),
+            rowing_500m_time=rowing_efforts.get("rowing_500m_time"),
+            rowing_1k_time=rowing_efforts.get("rowing_1k_time"),
+            rowing_2k_time=rowing_efforts.get("rowing_2k_time"),
+            rowing_5k_time=rowing_efforts.get("rowing_5k_time"),
+            rowing_10k_time=rowing_efforts.get("rowing_10k_time"),
+            rowing_1min_distance=rowing_efforts.get("rowing_1min_distance"),
+            rowing_4min_distance=rowing_efforts.get("rowing_4min_distance"),
+            rowing_10min_distance=rowing_efforts.get("rowing_10min_distance"),
+            rowing_20min_distance=rowing_efforts.get("rowing_20min_distance"),
+            rowing_30min_distance=rowing_efforts.get("rowing_30min_distance"),
+            rowing_60min_distance=rowing_efforts.get("rowing_60min_distance"),
         )
         repo.insert_activity_metrics(metrics)
         activity_count += 1
@@ -237,13 +277,33 @@ async def recalculate_generator(repo: Repository) -> AsyncIterator[dict]:
         ef = calculate_efficiency_factor(activity)
         vi = calculate_variability_index(activity)
 
-        # Calculate peak powers for cycling activities
+        # Calculate peak powers for cycling and rowing activities
         peak_powers = {}
-        if activity.activity_type == "cycle" and activity.fit_file_path:
+        rowing_efforts = {}
+        if activity.activity_type in ("cycle", "row") and activity.fit_file_path:
             fit_path = Path(activity.fit_file_path)
-            power_samples = extract_power_samples_from_fit(fit_path)
+            power_samples, sample_interval = extract_power_samples_from_fit(fit_path)
             if power_samples:
-                peak_powers = calculate_all_peak_powers(power_samples)
+                include_rowing = activity.activity_type == "row"
+                peak_powers = calculate_all_peak_powers(power_samples, include_rowing=include_rowing, sample_interval=sample_interval)
+
+            # Calculate rowing best efforts
+            if activity.activity_type == "row":
+                series = extract_distance_time_series(fit_path)
+                if series:
+                    # Distance PRs: best time to cover each distance
+                    rowing_efforts["rowing_500m_time"] = calculate_best_effort_time(series, 500)
+                    rowing_efforts["rowing_1k_time"] = calculate_best_effort_time(series, 1000)
+                    rowing_efforts["rowing_2k_time"] = calculate_best_effort_time(series, 2000)
+                    rowing_efforts["rowing_5k_time"] = calculate_best_effort_time(series, 5000)
+                    rowing_efforts["rowing_10k_time"] = calculate_best_effort_time(series, 10000)
+                    # Time PRs: best distance covered in each duration
+                    rowing_efforts["rowing_1min_distance"] = calculate_best_effort_distance(series, 60)
+                    rowing_efforts["rowing_4min_distance"] = calculate_best_effort_distance(series, 240)
+                    rowing_efforts["rowing_10min_distance"] = calculate_best_effort_distance(series, 600)
+                    rowing_efforts["rowing_20min_distance"] = calculate_best_effort_distance(series, 1200)
+                    rowing_efforts["rowing_30min_distance"] = calculate_best_effort_distance(series, 1800)
+                    rowing_efforts["rowing_60min_distance"] = calculate_best_effort_distance(series, 3600)
 
         # Store activity metrics
         metrics = ActivityMetrics(
@@ -257,6 +317,20 @@ async def recalculate_generator(repo: Repository) -> AsyncIterator[dict]:
             peak_power_1min=peak_powers.get("peak_power_1min"),
             peak_power_5min=peak_powers.get("peak_power_5min"),
             peak_power_20min=peak_powers.get("peak_power_20min"),
+            peak_power_4min=peak_powers.get("peak_power_4min"),
+            peak_power_30min=peak_powers.get("peak_power_30min"),
+            peak_power_60min=peak_powers.get("peak_power_60min"),
+            rowing_500m_time=rowing_efforts.get("rowing_500m_time"),
+            rowing_1k_time=rowing_efforts.get("rowing_1k_time"),
+            rowing_2k_time=rowing_efforts.get("rowing_2k_time"),
+            rowing_5k_time=rowing_efforts.get("rowing_5k_time"),
+            rowing_10k_time=rowing_efforts.get("rowing_10k_time"),
+            rowing_1min_distance=rowing_efforts.get("rowing_1min_distance"),
+            rowing_4min_distance=rowing_efforts.get("rowing_4min_distance"),
+            rowing_10min_distance=rowing_efforts.get("rowing_10min_distance"),
+            rowing_20min_distance=rowing_efforts.get("rowing_20min_distance"),
+            rowing_30min_distance=rowing_efforts.get("rowing_30min_distance"),
+            rowing_60min_distance=rowing_efforts.get("rowing_60min_distance"),
         )
         repo.insert_activity_metrics(metrics)
 

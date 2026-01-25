@@ -5,6 +5,7 @@ import type {
   PainLocationCount,
   MergePainLocationsRequest,
   MergePainLocationsResponse,
+  RowingPRsResponse,
 } from '@/types'
 
 export async function getPowerCurve(days = 90): Promise<PowerCurveResponse> {
@@ -23,4 +24,8 @@ export async function mergePainLocations(
   request: MergePainLocationsRequest
 ): Promise<MergePainLocationsResponse> {
   return post<MergePainLocationsResponse>('/analytics/merge-pain-locations', request)
+}
+
+export async function getRowingPRs(days = 90): Promise<RowingPRsResponse> {
+  return get<RowingPRsResponse>(`/analytics/rowing-prs?days=${days}`)
 }

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from trainy.database import Repository
 from trainy.metrics.critical_power import estimate_ftp_with_fallback
 from app.dependencies import get_repo
+
 from app.api.schemas.analytics import (
     PowerCurveResponse,
     PowerCurvePoint,
@@ -17,6 +18,10 @@ from app.api.schemas.analytics import (
     PainLocationCount,
     MergePainLocationsRequest,
     MergePainLocationsResponse,
+    RowingPRsResponse,
+    RowingDistancePR,
+    RowingTimePR,
+    RowingPowerPR,
 )
 
 router = APIRouter()
@@ -195,3 +200,77 @@ async def merge_pain_locations(
         target=request.target_location,
     )
     return MergePainLocationsResponse(updated_count=updated_count)
+
+
+@router.get("/rowing-prs", response_model=RowingPRsResponse)
+async def get_rowing_prs(
+    days: int = Query(90, ge=7, le=365, description="Number of days to look back"),
+    repo: Repository = Depends(get_repo),
+):
+    """Get rowing personal records for standard distances and time durations.
+
+    Data is pre-computed during metrics recalculation and stored in the database.
+    Uses the days parameter to filter by date range (similar to power-curve endpoint).
+    """
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+
+    # Query pre-computed rowing PRs from database
+    prs = repo.get_rowing_prs_for_range(start_date, end_date)
+
+    # Build distance PRs response with split calculation
+    distance_prs = []
+    for pr in prs["distance_prs"]:
+        total_seconds = pr["total_seconds"]
+        split_seconds = None
+        if total_seconds is not None:
+            split_seconds = (total_seconds / pr["distance_meters"]) * 500
+
+        distance_prs.append(
+            RowingDistancePR(
+                distance_meters=pr["distance_meters"],
+                distance_label=pr["distance_label"],
+                total_seconds=total_seconds,
+                split_seconds=round(split_seconds, 1) if split_seconds else None,
+                activity_id=pr["activity_id"],
+                activity_date=date.fromisoformat(pr["activity_date"]) if pr["activity_date"] else None,
+            )
+        )
+
+    # Build time PRs response with split calculation
+    time_prs = []
+    for pr in prs["time_prs"]:
+        best_distance = pr["best_distance_meters"]
+        split_seconds = None
+        if best_distance is not None and best_distance > 0:
+            split_seconds = (pr["duration_seconds"] / best_distance) * 500
+
+        time_prs.append(
+            RowingTimePR(
+                duration_seconds=pr["duration_seconds"],
+                duration_label=pr["duration_label"],
+                best_distance_meters=best_distance,
+                split_seconds=round(split_seconds, 1) if split_seconds else None,
+                activity_id=pr["activity_id"],
+                activity_date=date.fromisoformat(pr["activity_date"]) if pr["activity_date"] else None,
+            )
+        )
+
+    # Build power PRs response
+    power_prs = []
+    for pr in prs["power_prs"]:
+        power_prs.append(
+            RowingPowerPR(
+                duration_seconds=pr["duration_seconds"],
+                duration_label=pr["duration_label"],
+                best_watts=round(pr["best_watts"], 1) if pr["best_watts"] else None,
+                activity_id=pr["activity_id"],
+                activity_date=date.fromisoformat(pr["activity_date"]) if pr["activity_date"] else None,
+            )
+        )
+
+    return RowingPRsResponse(
+        distance_prs=distance_prs,
+        time_prs=time_prs,
+        power_prs=power_prs,
+    )

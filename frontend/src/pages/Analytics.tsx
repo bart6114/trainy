@@ -5,7 +5,8 @@ import { PowerAnalysis } from '@/components/analytics/PowerAnalysis'
 import { InjuryAnalysis } from '@/components/analytics/InjuryAnalysis'
 import { PerformanceAnalysis } from '@/components/analytics/PerformanceAnalysis'
 import { TrainingLoad } from '@/components/analytics/TrainingLoad'
-import { Zap, HeartPulse, TrendingUp, BarChart3 } from 'lucide-react'
+import { RowingPRs } from '@/components/analytics/RowingPRs'
+import { Bike, HeartPulse, TrendingUp, BarChart3, Waves } from 'lucide-react'
 
 const DATE_RANGES = [
   { value: 30, label: '30d' },
@@ -14,7 +15,7 @@ const DATE_RANGES = [
   { value: 365, label: '1yr' },
 ]
 
-type TabValue = 'performance' | 'training-load' | 'power' | 'injury'
+type TabValue = 'performance' | 'training-load' | 'power' | 'rowing' | 'injury'
 
 export function Analytics() {
   const [days, setDays] = useState(90)
@@ -52,8 +53,12 @@ export function Analytics() {
             Training Load
           </TabsTrigger>
           <TabsTrigger value="power" className="gap-2">
-            <Zap className="h-4 w-4" />
-            Power
+            <Bike className="h-4 w-4" />
+            Power Curve
+          </TabsTrigger>
+          <TabsTrigger value="rowing" className="gap-2">
+            <Waves className="h-4 w-4" />
+            Rowing
           </TabsTrigger>
           <TabsTrigger value="injury" className="gap-2">
             <HeartPulse className="h-4 w-4" />
@@ -71,6 +76,10 @@ export function Analytics() {
 
         <TabsContent value="power">
           <PowerAnalysis days={days} />
+        </TabsContent>
+
+        <TabsContent value="rowing">
+          <RowingPRs days={days} />
         </TabsContent>
 
         <TabsContent value="injury">

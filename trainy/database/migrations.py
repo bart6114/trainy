@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 -- Schema version tracking
@@ -69,6 +69,26 @@ CREATE TABLE IF NOT EXISTS activity_metrics (
     peak_power_1min REAL,
     peak_power_5min REAL,
     peak_power_20min REAL,
+
+    -- Rowing-specific power peaks
+    peak_power_4min REAL,
+    peak_power_30min REAL,
+    peak_power_60min REAL,
+
+    -- Rowing distance PRs: best time (seconds) to cover each distance
+    rowing_500m_time REAL,
+    rowing_1k_time REAL,
+    rowing_2k_time REAL,
+    rowing_5k_time REAL,
+    rowing_10k_time REAL,
+
+    -- Rowing time PRs: best distance (meters) covered in each duration
+    rowing_1min_distance REAL,
+    rowing_4min_distance REAL,
+    rowing_10min_distance REAL,
+    rowing_20min_distance REAL,
+    rowing_30min_distance REAL,
+    rowing_60min_distance REAL,
 
     calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -246,6 +266,12 @@ def _apply_migrations(conn: sqlite3.Connection, from_version: int, to_version: i
     if from_version < 5 <= to_version:
         _migrate_v4_to_v5(conn)
 
+    if from_version < 6 <= to_version:
+        _migrate_v5_to_v6(conn)
+
+    if from_version < 7 <= to_version:
+        _migrate_v6_to_v7(conn)
+
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (to_version,))
     conn.commit()
 
@@ -375,3 +401,38 @@ def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE planned_workouts ADD COLUMN target_calories INTEGER")
     except sqlite3.OperationalError:
         pass  # Column already exists
+
+
+def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
+    """Migration from v5 to v6: Add rowing-specific power peak columns."""
+    for col in ["peak_power_4min", "peak_power_30min", "peak_power_60min"]:
+        try:
+            conn.execute(f"ALTER TABLE activity_metrics ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+
+def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
+    """Migration from v6 to v7: Add rowing best effort columns."""
+    # Distance PRs: best time to cover each distance
+    distance_cols = [
+        "rowing_500m_time",
+        "rowing_1k_time",
+        "rowing_2k_time",
+        "rowing_5k_time",
+        "rowing_10k_time",
+    ]
+    # Time PRs: best distance covered in each duration
+    time_cols = [
+        "rowing_1min_distance",
+        "rowing_4min_distance",
+        "rowing_10min_distance",
+        "rowing_20min_distance",
+        "rowing_30min_distance",
+        "rowing_60min_distance",
+    ]
+    for col in distance_cols + time_cols:
+        try:
+            conn.execute(f"ALTER TABLE activity_metrics ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError:
+            pass  # Column already exists

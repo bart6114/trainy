@@ -190,8 +190,12 @@ class Repository:
             INSERT OR REPLACE INTO activity_metrics (
                 activity_id, tss, tss_method, intensity_factor,
                 efficiency_factor, variability_index,
-                peak_power_5s, peak_power_1min, peak_power_5min, peak_power_20min
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                peak_power_5s, peak_power_1min, peak_power_5min, peak_power_20min,
+                peak_power_4min, peak_power_30min, peak_power_60min,
+                rowing_500m_time, rowing_1k_time, rowing_2k_time, rowing_5k_time, rowing_10k_time,
+                rowing_1min_distance, rowing_4min_distance, rowing_10min_distance,
+                rowing_20min_distance, rowing_30min_distance, rowing_60min_distance
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metrics.activity_id,
@@ -204,6 +208,20 @@ class Repository:
                 metrics.peak_power_1min,
                 metrics.peak_power_5min,
                 metrics.peak_power_20min,
+                metrics.peak_power_4min,
+                metrics.peak_power_30min,
+                metrics.peak_power_60min,
+                metrics.rowing_500m_time,
+                metrics.rowing_1k_time,
+                metrics.rowing_2k_time,
+                metrics.rowing_5k_time,
+                metrics.rowing_10k_time,
+                metrics.rowing_1min_distance,
+                metrics.rowing_4min_distance,
+                metrics.rowing_10min_distance,
+                metrics.rowing_20min_distance,
+                metrics.rowing_30min_distance,
+                metrics.rowing_60min_distance,
             ),
         )
         self.conn.commit()
@@ -216,18 +234,33 @@ class Repository:
         )
         row = cursor.fetchone()
         if row:
+            keys = row.keys()
             return ActivityMetrics(
                 id=row["id"],
                 activity_id=row["activity_id"],
                 tss=row["tss"],
                 tss_method=row["tss_method"],
                 intensity_factor=row["intensity_factor"],
-                efficiency_factor=row["efficiency_factor"] if "efficiency_factor" in row.keys() else None,
-                variability_index=row["variability_index"] if "variability_index" in row.keys() else None,
+                efficiency_factor=row["efficiency_factor"] if "efficiency_factor" in keys else None,
+                variability_index=row["variability_index"] if "variability_index" in keys else None,
                 peak_power_5s=row["peak_power_5s"],
                 peak_power_1min=row["peak_power_1min"],
                 peak_power_5min=row["peak_power_5min"],
                 peak_power_20min=row["peak_power_20min"],
+                peak_power_4min=row["peak_power_4min"] if "peak_power_4min" in keys else None,
+                peak_power_30min=row["peak_power_30min"] if "peak_power_30min" in keys else None,
+                peak_power_60min=row["peak_power_60min"] if "peak_power_60min" in keys else None,
+                rowing_500m_time=row["rowing_500m_time"] if "rowing_500m_time" in keys else None,
+                rowing_1k_time=row["rowing_1k_time"] if "rowing_1k_time" in keys else None,
+                rowing_2k_time=row["rowing_2k_time"] if "rowing_2k_time" in keys else None,
+                rowing_5k_time=row["rowing_5k_time"] if "rowing_5k_time" in keys else None,
+                rowing_10k_time=row["rowing_10k_time"] if "rowing_10k_time" in keys else None,
+                rowing_1min_distance=row["rowing_1min_distance"] if "rowing_1min_distance" in keys else None,
+                rowing_4min_distance=row["rowing_4min_distance"] if "rowing_4min_distance" in keys else None,
+                rowing_10min_distance=row["rowing_10min_distance"] if "rowing_10min_distance" in keys else None,
+                rowing_20min_distance=row["rowing_20min_distance"] if "rowing_20min_distance" in keys else None,
+                rowing_30min_distance=row["rowing_30min_distance"] if "rowing_30min_distance" in keys else None,
+                rowing_60min_distance=row["rowing_60min_distance"] if "rowing_60min_distance" in keys else None,
                 calculated_at=datetime.fromisoformat(row["calculated_at"]) if row["calculated_at"] else None,
             )
         return None
@@ -870,6 +903,251 @@ class Repository:
             (start_date.isoformat(), end_date.isoformat()),
         )
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_rowing_activities_with_fit_paths(self) -> list[dict]:
+        """Get all rowing activities that have FIT file paths."""
+        cursor = self.conn.execute(
+            """
+            SELECT id, fit_file_path, DATE(start_time) as start_date
+            FROM activities
+            WHERE activity_type = 'row'
+              AND fit_file_path IS NOT NULL
+            ORDER BY start_time DESC
+            """
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_rowing_distance_prs(self) -> list[dict]:
+        """Get best rowing times for standard distances (500m, 1k, 2k, 5k, 10k).
+
+        Uses a 2% tolerance to match distances (e.g., 4950-5050m for 5k).
+        """
+        distances = [
+            (500, "500m", 0.02),
+            (1000, "1k", 0.02),
+            (2000, "2k", 0.02),
+            (5000, "5k", 0.02),
+            (10000, "10k", 0.02),
+        ]
+
+        results = []
+        for target_m, label, tolerance in distances:
+            min_dist = target_m * (1 - tolerance)
+            max_dist = target_m * (1 + tolerance)
+
+            cursor = self.conn.execute(
+                """
+                SELECT id, distance_meters, duration_seconds, DATE(start_time) as activity_date
+                FROM activities
+                WHERE activity_type = 'row'
+                  AND distance_meters >= ? AND distance_meters <= ?
+                  AND duration_seconds IS NOT NULL
+                ORDER BY duration_seconds ASC
+                LIMIT 1
+                """,
+                (min_dist, max_dist),
+            )
+            row = cursor.fetchone()
+            if row:
+                results.append({
+                    "distance_meters": target_m,
+                    "distance_label": label,
+                    "total_seconds": row["duration_seconds"],
+                    "activity_id": row["id"],
+                    "activity_date": row["activity_date"],
+                })
+            else:
+                results.append({
+                    "distance_meters": target_m,
+                    "distance_label": label,
+                    "total_seconds": None,
+                    "activity_id": None,
+                    "activity_date": None,
+                })
+
+        return results
+
+    def get_rowing_power_prs(self) -> list[dict]:
+        """Get best rowing power at standard durations (1min, 4min, 30min, 60min)."""
+        durations = [
+            (60, "1min", "peak_power_1min"),
+            (240, "4min", "peak_power_4min"),
+            (1800, "30min", "peak_power_30min"),
+            (3600, "60min", "peak_power_60min"),
+        ]
+
+        results = []
+        for duration_s, label, column in durations:
+            cursor = self.conn.execute(
+                f"""
+                SELECT m.{column} as power, a.id as activity_id, DATE(a.start_time) as activity_date
+                FROM activity_metrics m
+                JOIN activities a ON m.activity_id = a.id
+                WHERE a.activity_type = 'row'
+                  AND m.{column} IS NOT NULL
+                ORDER BY m.{column} DESC
+                LIMIT 1
+                """,
+            )
+            row = cursor.fetchone()
+            if row:
+                results.append({
+                    "duration_seconds": duration_s,
+                    "duration_label": label,
+                    "best_watts": row["power"],
+                    "activity_id": row["activity_id"],
+                    "activity_date": row["activity_date"],
+                })
+            else:
+                results.append({
+                    "duration_seconds": duration_s,
+                    "duration_label": label,
+                    "best_watts": None,
+                    "activity_id": None,
+                    "activity_date": None,
+                })
+
+        return results
+
+    def get_rowing_prs_for_range(self, start_date: date, end_date: date) -> dict:
+        """Get best rowing PRs within a date range from pre-computed activity_metrics.
+
+        Returns a dict with:
+        - distance_prs: list of dicts with best time for each distance
+        - time_prs: list of dicts with best distance for each duration
+        - power_prs: list of dicts with best power for each duration
+        """
+        # Distance PRs: best (lowest) time for each distance
+        distance_targets = [
+            (500, "500m", "rowing_500m_time"),
+            (1000, "1k", "rowing_1k_time"),
+            (2000, "2k", "rowing_2k_time"),
+            (5000, "5k", "rowing_5k_time"),
+            (10000, "10k", "rowing_10k_time"),
+        ]
+
+        distance_prs = []
+        for target_m, label, column in distance_targets:
+            cursor = self.conn.execute(
+                f"""
+                SELECT m.{column} as time, a.id as activity_id, DATE(a.start_time) as activity_date
+                FROM activity_metrics m
+                JOIN activities a ON m.activity_id = a.id
+                WHERE a.activity_type = 'row'
+                  AND DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+                  AND m.{column} IS NOT NULL
+                ORDER BY m.{column} ASC
+                LIMIT 1
+                """,
+                (start_date.isoformat(), end_date.isoformat()),
+            )
+            row = cursor.fetchone()
+            if row:
+                distance_prs.append({
+                    "distance_meters": target_m,
+                    "distance_label": label,
+                    "total_seconds": row["time"],
+                    "activity_id": row["activity_id"],
+                    "activity_date": row["activity_date"],
+                })
+            else:
+                distance_prs.append({
+                    "distance_meters": target_m,
+                    "distance_label": label,
+                    "total_seconds": None,
+                    "activity_id": None,
+                    "activity_date": None,
+                })
+
+        # Time PRs: best (highest) distance for each duration
+        time_targets = [
+            (60, "1min", "rowing_1min_distance"),
+            (240, "4min", "rowing_4min_distance"),
+            (600, "10min", "rowing_10min_distance"),
+            (1200, "20min", "rowing_20min_distance"),
+            (1800, "30min", "rowing_30min_distance"),
+            (3600, "60min", "rowing_60min_distance"),
+        ]
+
+        time_prs = []
+        for target_s, label, column in time_targets:
+            cursor = self.conn.execute(
+                f"""
+                SELECT m.{column} as distance, a.id as activity_id, DATE(a.start_time) as activity_date
+                FROM activity_metrics m
+                JOIN activities a ON m.activity_id = a.id
+                WHERE a.activity_type = 'row'
+                  AND DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+                  AND m.{column} IS NOT NULL
+                ORDER BY m.{column} DESC
+                LIMIT 1
+                """,
+                (start_date.isoformat(), end_date.isoformat()),
+            )
+            row = cursor.fetchone()
+            if row:
+                time_prs.append({
+                    "duration_seconds": target_s,
+                    "duration_label": label,
+                    "best_distance_meters": row["distance"],
+                    "activity_id": row["activity_id"],
+                    "activity_date": row["activity_date"],
+                })
+            else:
+                time_prs.append({
+                    "duration_seconds": target_s,
+                    "duration_label": label,
+                    "best_distance_meters": None,
+                    "activity_id": None,
+                    "activity_date": None,
+                })
+
+        # Power PRs: best (highest) power for each duration
+        power_targets = [
+            (60, "1min", "peak_power_1min"),
+            (240, "4min", "peak_power_4min"),
+            (1800, "30min", "peak_power_30min"),
+            (3600, "60min", "peak_power_60min"),
+        ]
+
+        power_prs = []
+        for target_s, label, column in power_targets:
+            cursor = self.conn.execute(
+                f"""
+                SELECT m.{column} as power, a.id as activity_id, DATE(a.start_time) as activity_date
+                FROM activity_metrics m
+                JOIN activities a ON m.activity_id = a.id
+                WHERE a.activity_type = 'row'
+                  AND DATE(a.start_time) >= ? AND DATE(a.start_time) <= ?
+                  AND m.{column} IS NOT NULL
+                ORDER BY m.{column} DESC
+                LIMIT 1
+                """,
+                (start_date.isoformat(), end_date.isoformat()),
+            )
+            row = cursor.fetchone()
+            if row:
+                power_prs.append({
+                    "duration_seconds": target_s,
+                    "duration_label": label,
+                    "best_watts": row["power"],
+                    "activity_id": row["activity_id"],
+                    "activity_date": row["activity_date"],
+                })
+            else:
+                power_prs.append({
+                    "duration_seconds": target_s,
+                    "duration_label": label,
+                    "best_watts": None,
+                    "activity_id": None,
+                    "activity_date": None,
+                })
+
+        return {
+            "distance_prs": distance_prs,
+            "time_prs": time_prs,
+            "power_prs": power_prs,
+        }
 
     def delete_activities_only(self) -> dict:
         """Delete activities and related data, preserving planned workouts. Returns counts deleted."""

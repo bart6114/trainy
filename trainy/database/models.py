@@ -74,6 +74,26 @@ class ActivityMetrics(BaseModel):
     peak_power_5min: Optional[float] = None
     peak_power_20min: Optional[float] = None
 
+    # Rowing-specific power peaks
+    peak_power_4min: Optional[float] = None
+    peak_power_30min: Optional[float] = None
+    peak_power_60min: Optional[float] = None
+
+    # Rowing distance PRs: best time (seconds) to cover each distance
+    rowing_500m_time: Optional[float] = None
+    rowing_1k_time: Optional[float] = None
+    rowing_2k_time: Optional[float] = None
+    rowing_5k_time: Optional[float] = None
+    rowing_10k_time: Optional[float] = None
+
+    # Rowing time PRs: best distance (meters) covered in each duration
+    rowing_1min_distance: Optional[float] = None
+    rowing_4min_distance: Optional[float] = None
+    rowing_10min_distance: Optional[float] = None
+    rowing_20min_distance: Optional[float] = None
+    rowing_30min_distance: Optional[float] = None
+    rowing_60min_distance: Optional[float] = None
+
     calculated_at: Optional[datetime] = None
 
 
