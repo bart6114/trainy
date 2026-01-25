@@ -50,10 +50,20 @@ async def coaching_chat_stream(
                 for msg in request.conversation_history
             ]
 
+            # Convert current proposal to dict format if present
+            current_proposal = None
+            if request.current_proposal:
+                current_proposal = {
+                    "proposal_id": request.current_proposal.proposal_id,
+                    "workouts": [w.model_dump() for w in request.current_proposal.workouts],
+                    "deletions": [d.model_dump() for d in request.current_proposal.deletions],
+                }
+
             async for event in run_coaching_conversation(
                 message=request.message,
                 conversation_history=conversation_history,
                 repo=repo,
+                current_proposal=current_proposal,
             ):
                 event_type = event.get("event", "")
                 event_data = event.get("data", {})

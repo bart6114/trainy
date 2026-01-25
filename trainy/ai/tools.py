@@ -139,7 +139,7 @@ COACHING_TOOLS = [
                                 },
                                 "activity_type": {
                                     "type": "string",
-                                    "enum": ["run", "cycle", "swim", "strength", "rest"],
+                                    "enum": ["run", "cycle", "swim", "row", "walk", "hike", "strength", "cardio", "yoga", "xcski", "ski", "snowboard", "other", "rest"],
                                     "description": "Type of activity",
                                 },
                                 "workout_type": {
@@ -188,7 +188,7 @@ COACHING_TOOLS = [
                     },
                     "activity_type": {
                         "type": "string",
-                        "enum": ["run", "cycle", "swim", "strength", "rest"],
+                        "enum": ["run", "cycle", "swim", "row", "walk", "hike", "strength", "cardio", "yoga", "xcski", "ski", "snowboard", "other", "rest"],
                         "description": "New activity type (optional)",
                     },
                     "workout_type": {

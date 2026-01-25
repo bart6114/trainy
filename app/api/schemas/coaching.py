@@ -12,11 +12,20 @@ class ConversationMessage(BaseModel):
     content: str
 
 
+class CurrentProposal(BaseModel):
+    """Current proposal state to preserve during iterative refinement."""
+
+    proposal_id: str
+    workouts: list["WorkoutProposal"] = []
+    deletions: list["WorkoutDeletion"] = []
+
+
 class CoachingChatRequest(BaseModel):
     """Request to chat with the coaching assistant."""
 
     message: str
     conversation_history: list[ConversationMessage] = []
+    current_proposal: Optional[CurrentProposal] = None
 
 
 class WorkoutProposal(BaseModel):

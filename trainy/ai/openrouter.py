@@ -15,7 +15,7 @@ from ..metrics.calories import predict_calories
 
 
 # Default model for coaching
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
+DEFAULT_MODEL = "anthropic/claude-opus-4.5"
 
 
 def _make_schema_strict(schema: dict) -> dict:
@@ -43,7 +43,7 @@ class WorkoutSchema(BaseModel):
     """Schema for a workout from AI generation."""
 
     date: date
-    activity_type: Literal["run", "cycle", "swim", "strength", "rest"]
+    activity_type: Literal["run", "cycle", "swim", "row", "walk", "hike", "strength", "cardio", "yoga", "xcski", "ski", "snowboard", "other", "rest"]
     workout_type: Literal["easy", "tempo", "intervals", "long", "recovery", "rest"]
     title: str
     description: str

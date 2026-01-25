@@ -11,36 +11,34 @@ from .tools import COACHING_TOOLS, WRITE_TOOLS, execute_tool
 from .openrouter import chat_with_tools
 
 
-COACHING_SYSTEM_PROMPT = """You are an expert endurance coach helping an athlete with their training.
+COACHING_SYSTEM_PROMPT = """You are an expert endurance coach. Be brief and direct - no fluff.
 
-You have access to tools that let you:
-- Query their training data (activities, fitness metrics, pain history, wellness trends, power curve)
-- View and manage their planned workouts
-
-When the user asks questions about their training, use the appropriate tools to gather data before answering.
-When they ask you to create or modify workouts, use the write tools to generate proposals.
+Tools available:
+- Query training data (activities, fitness, pain history, wellness, power curve)
+- View and manage planned workouts
 
 Guidelines:
-- Be conversational and supportive
-- Use data to back up your recommendations
-- Consider injury history and recovery status when planning
-- Progress training gradually (no more than 10% weekly volume increase)
-- Balance workout types appropriately (easy, tempo, intervals, long)
-- Always explain your reasoning briefly
+- Use data to back up recommendations
+- Consider injury history and recovery when planning
+- Max 10% weekly volume increase
+- Balance workout types (easy, tempo, intervals, long)
 
-For workout creation:
-- Easy runs: HR Zone 2, conversational pace
-- Tempo runs: HR Zone 3-4, comfortably hard
-- Intervals: HR Zone 4-5, with appropriate recovery
-- Long runs: HR Zone 2, building aerobic base
-- Recovery: Very easy or complete rest
+Workout zones:
+- Easy: HR Zone 2, conversational
+- Tempo: HR Zone 3-4, comfortably hard
+- Intervals: HR Zone 4-5, with recovery
+- Long: HR Zone 2, aerobic base
 
-Response formatting:
-- Use markdown formatting for readability
-- Use **bold** for emphasis and key metrics
-- Use bullet points or numbered lists for multiple items
-- Use headers (##) sparingly for major sections
-- Keep responses concise but well-structured
+Response style:
+- SHORT and to the point - 1-3 sentences max for simple questions
+- Use bullet points for lists
+- Bold key metrics only
+- Skip pleasantries and filler words
+
+Workout titles:
+- Use descriptive names like "Easy Run", "Tempo Intervals", "Long Ride"
+- Do NOT add day numbers like "Day 1/7" or "Week 1 Day 3"
+- Do NOT add dates in titles - the date field handles that
 
 Today's date is {today}."""
 
@@ -50,6 +48,7 @@ async def run_coaching_conversation(
     conversation_history: list[dict],
     repo: Repository,
     max_iterations: int = 5,
+    current_proposal: Optional[dict] = None,
 ) -> AsyncGenerator[dict, None]:
     """Run a coaching conversation with tool-calling loop.
 
@@ -76,9 +75,15 @@ async def run_coaching_conversation(
     # Add current user message
     messages.append({"role": "user", "content": message})
 
-    # Collect proposals from write tools
+    # Initialize proposals from current state (for iterative refinement)
     all_proposals: list[dict] = []
     all_deletions: list[dict] = []
+    proposal_id = str(uuid.uuid4())
+
+    if current_proposal:
+        all_proposals = list(current_proposal.get("workouts", []))
+        all_deletions = list(current_proposal.get("deletions", []))
+        proposal_id = current_proposal.get("proposal_id", proposal_id)
 
     # Tool-calling loop
     for iteration in range(max_iterations):
@@ -112,7 +117,7 @@ async def run_coaching_conversation(
                 yield {"event": "proposal", "data": {
                     "workouts": all_proposals,
                     "deletions": all_deletions,
-                    "proposal_id": str(uuid.uuid4()),
+                    "proposal_id": proposal_id,
                 }}
             return
 
@@ -147,9 +152,33 @@ async def run_coaching_conversation(
             # Collect proposals from write tools
             if tool_name in WRITE_TOOLS:
                 if "proposals" in result:
-                    all_proposals.extend(result["proposals"])
+                    if tool_name == "create_workouts":
+                        # create_workouts replaces entire proposal (new schedule)
+                        all_proposals = list(result["proposals"])
+                    else:
+                        # modify_workout merges by existing_workout_id
+                        for new_workout in result["proposals"]:
+                            existing_id = new_workout.get("existing_workout_id")
+                            if existing_id:
+                                # Replace the workout being modified
+                                replaced = False
+                                for i, existing in enumerate(all_proposals):
+                                    if existing.get("existing_workout_id") == existing_id:
+                                        all_proposals[i] = new_workout
+                                        replaced = True
+                                        break
+                                if not replaced:
+                                    all_proposals.append(new_workout)
+                            else:
+                                all_proposals.append(new_workout)
                 if "deletion" in result:
-                    all_deletions.append(result["deletion"])
+                    deletion = result["deletion"]
+                    # Don't add duplicate deletions
+                    if not any(d["workout_id"] == deletion["workout_id"] for d in all_deletions):
+                        all_deletions.append(deletion)
+                    # Remove from proposals if we're deleting it
+                    all_proposals = [p for p in all_proposals
+                                   if p.get("existing_workout_id") != deletion["workout_id"]]
 
             # Add tool result to messages
             tool_results.append({
@@ -168,5 +197,5 @@ async def run_coaching_conversation(
         yield {"event": "proposal", "data": {
             "workouts": all_proposals,
             "deletions": all_deletions,
-            "proposal_id": str(uuid.uuid4()),
+            "proposal_id": proposal_id,
         }}

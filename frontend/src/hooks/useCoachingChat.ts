@@ -223,13 +223,19 @@ export function useCoachingChat() {
           content: msg.content,
         }))
 
+        // Include current proposal for iterative refinement
+        const requestBody: Record<string, unknown> = {
+          message,
+          conversation_history: conversationHistory,
+        }
+        if (state.proposal) {
+          requestBody.current_proposal = state.proposal
+        }
+
         const response = await fetch(`${API_BASE}/coaching/chat/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message,
-            conversation_history: conversationHistory,
-          }),
+          body: JSON.stringify(requestBody),
         })
 
         if (!response.ok) {
@@ -247,7 +253,7 @@ export function useCoachingChat() {
         }))
       }
     },
-    [state.conversation, processSSEStream]
+    [state.conversation, state.proposal, processSSEStream]
   )
 
   const acceptProposal = useCallback(async () => {
