@@ -204,7 +204,7 @@ function CalendarView({
   )
 }
 
-export function Planning() {
+export function Coach() {
   const { data: upcomingWorkouts, isLoading: workoutsLoading } = useUpcomingWorkouts(30)
   const deleteWorkout = useDeleteWorkout()
   const skipWorkout = useSkipWorkout()

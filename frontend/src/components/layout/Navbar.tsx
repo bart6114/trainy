@@ -7,7 +7,7 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: Calendar },
   { href: '/activities', label: 'Activities', icon: Activity },
   { href: '/analytics', label: 'Analytics', icon: TrendingUp },
-  { href: '/planning', label: 'Coach', icon: MessageSquare },
+  { href: '/coach', label: 'Coach', icon: MessageSquare },
   { href: '/metrics', label: 'Metrics', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
