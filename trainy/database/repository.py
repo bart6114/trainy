@@ -1062,6 +1062,31 @@ class Repository:
         self.conn.commit()
         return checkin
 
+    def get_morning_checkins_range(self, start_date: date, end_date: date) -> list[MorningCheckin]:
+        """Get morning check-ins within a date range."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM morning_checkin
+            WHERE checkin_date >= ? AND checkin_date <= ?
+            ORDER BY checkin_date DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+        checkins = []
+        for row in cursor.fetchall():
+            checkins.append(MorningCheckin(
+                id=row["id"],
+                checkin_date=date.fromisoformat(row["checkin_date"]),
+                sleep_quality=row["sleep_quality"],
+                sleep_hours=row["sleep_hours"],
+                muscle_soreness=row["muscle_soreness"],
+                energy_level=row["energy_level"],
+                mood=row["mood"],
+                notes=row["notes"],
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
+            ))
+        return checkins
+
     # --- Pending Feedback (for notification badge) ---
 
     def get_activities_without_feedback(self, days: int = 3) -> list[Activity]:

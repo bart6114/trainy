@@ -525,3 +525,83 @@ export interface ActivityTrackResponse {
   has_track: boolean
   points: TrackPoint[]
 }
+
+// Coaching chat types
+export interface ToolCallInfo {
+  tool_name: string
+  arguments: Record<string, unknown>
+}
+
+export interface ToolResultInfo {
+  tool_name: string
+  result: Record<string, unknown>
+  summary: string
+}
+
+export interface CoachingMessage {
+  role: 'user' | 'assistant'
+  content: string
+  toolCalls?: ToolCallInfo[]
+  toolResults?: ToolResultInfo[]
+}
+
+export interface WorkoutProposalItem {
+  date: string
+  activity_type: string
+  workout_type: string | null
+  title: string
+  description: string | null
+  target_duration_minutes: number
+  target_tss: number | null
+  target_calories: number | null
+  existing_workout_id: number | null
+}
+
+export interface WorkoutDeletionItem {
+  workout_id: number
+  title: string
+  date: string
+}
+
+export interface CoachingProposal {
+  proposal_id: string
+  workouts: WorkoutProposalItem[]
+  deletions: WorkoutDeletionItem[]
+}
+
+// Coaching SSE event types
+export interface CoachingThinkingEvent {
+  message: string
+}
+
+export interface CoachingToolCallEvent {
+  tool_name: string
+  arguments: Record<string, unknown>
+}
+
+export interface CoachingToolResultEvent {
+  tool_name: string
+  result: Record<string, unknown>
+  summary: string
+}
+
+export interface CoachingTextEvent {
+  content: string
+}
+
+export interface CoachingProposalEvent {
+  workouts: WorkoutProposalItem[]
+  deletions: WorkoutDeletionItem[]
+  proposal_id: string
+}
+
+export interface CoachingErrorEvent {
+  message: string
+}
+
+export interface AcceptCoachingProposalResponse {
+  created_ids: number[]
+  updated_ids: number[]
+  deleted_ids: number[]
+  message: string
+}

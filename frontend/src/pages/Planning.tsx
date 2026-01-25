@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useUpcomingWorkouts, useDeleteWorkout, useSkipWorkout } from '@/hooks/usePlanning'
-import { WorkoutPlanningChat } from '@/components/planning/WorkoutPlanningChat'
+import { CoachingChat } from '@/components/planning/CoachingChat'
 import { formatDuration, formatDistance } from '@/lib/utils'
 import type { PlannedWorkout } from '@/types'
 
@@ -212,11 +212,11 @@ export function Planning() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Workout Planning</h1>
-        <p className="text-muted-foreground">Generate and manage your AI-powered training workouts</p>
+        <h1 className="text-3xl font-bold tracking-tight">AI Coach</h1>
+        <p className="text-muted-foreground">Chat with your AI coach to plan workouts, analyze performance, and get training insights</p>
       </div>
 
-      <WorkoutPlanningChat />
+      <CoachingChat />
 
       <div>
         <h2 className="text-xl font-semibold mb-4">Planned Workouts</h2>

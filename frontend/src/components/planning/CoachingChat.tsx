@@ -1,14 +1,28 @@
 import { useState, useRef, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
-import { Send, Loader2, X, Check, Calendar, Dumbbell, Pencil } from 'lucide-react'
+import { Send, Loader2, X, Check, Calendar, MessageSquare, Wrench, Pencil, Trash2 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { useConversationalPlanning } from '@/hooks/useConversationalPlanning'
+import { useCoachingChat } from '@/hooks/useCoachingChat'
 import { formatDuration } from '@/lib/utils'
-import type { ConversationMessage, ProposedWorkout, QuestionEvent } from '@/types'
+import type { CoachingMessage, ToolCallInfo, ToolResultInfo, WorkoutProposalItem, WorkoutDeletionItem } from '@/types'
 
-function ThinkingBubble({ message }: { message: string }) {
+// Tool name to human-readable label mapping
+const TOOL_LABELS: Record<string, string> = {
+  get_recent_activities: 'Checking recent activities',
+  get_fitness_state: 'Checking fitness status',
+  get_pain_history: 'Reviewing injury history',
+  get_wellness_trends: 'Analyzing wellness trends',
+  get_power_curve: 'Analyzing power data',
+  get_planned_workouts: 'Checking planned workouts',
+  create_workouts: 'Creating workout plan',
+  modify_workout: 'Modifying workout',
+  delete_workout: 'Removing workout',
+}
+
+function ThinkingIndicator({ message }: { message: string }) {
   return (
     <div className="flex justify-start">
       <div className="bg-muted rounded-lg px-4 py-3 max-w-[85%]">
@@ -25,49 +39,65 @@ function ThinkingBubble({ message }: { message: string }) {
   )
 }
 
-function MessageBubble({ message }: { message: ConversationMessage }) {
+function ToolCallIndicator({ toolCall }: { toolCall: ToolCallInfo }) {
+  const label = TOOL_LABELS[toolCall.tool_name] || toolCall.tool_name
+
+  return (
+    <div className="flex justify-start">
+      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 max-w-[85%]">
+        <div className="flex items-center gap-2">
+          <Wrench className="w-4 h-4 text-blue-500 animate-spin" />
+          <span className="text-sm text-blue-700 dark:text-blue-300">{label}...</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ToolResultBadge({ result }: { result: ToolResultInfo }) {
+  const label = TOOL_LABELS[result.tool_name] || result.tool_name
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+      <Wrench className="w-3 h-3" />
+      <span className="font-medium">{label.replace(/^(Checking|Reviewing|Analyzing|Creating|Modifying|Removing)\s+/i, '')}</span>
+      <span className="text-muted-foreground/70">- {result.summary}</span>
+    </div>
+  )
+}
+
+function MessageBubble({ message }: { message: CoachingMessage }) {
   const isUser = message.role === 'user'
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+      {/* Show tool results summary for assistant messages */}
+      {!isUser && message.toolResults && message.toolResults.length > 0 && (
+        <div className="mb-2 space-y-1 max-w-[85%]">
+          {message.toolResults.map((result, index) => (
+            <ToolResultBadge key={index} result={result} />
+          ))}
+        </div>
+      )}
+
       <div
         className={`max-w-[85%] rounded-lg px-4 py-2 ${
           isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
         }`}
       >
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        {isUser ? (
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <div className="text-sm prose prose-sm dark:prose-invert prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 prose-headings:font-semibold max-w-none">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function QuestionOptions({
-  options,
-  onSelect,
-}: {
-  options: string[]
-  onSelect: (option: string) => void
-}) {
-  return (
-    <div className="flex justify-start">
-      <div className="flex flex-wrap gap-2 max-w-[85%]">
-        {options.map((option, index) => (
-          <Button
-            key={index}
-            variant="outline"
-            size="sm"
-            onClick={() => onSelect(option)}
-            className="text-xs"
-          >
-            {option}
-          </Button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ProposedWorkoutCard({ workout }: { workout: ProposedWorkout }) {
+function ProposedWorkoutCard({ workout }: { workout: WorkoutProposalItem }) {
   const isEdit = !!workout.existing_workout_id
 
   return (
@@ -118,17 +148,31 @@ function ProposedWorkoutCard({ workout }: { workout: ProposedWorkout }) {
   )
 }
 
-function EmptyWorkoutsPanel() {
+function DeletionCard({ deletion }: { deletion: WorkoutDeletionItem }) {
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800">
+      <Trash2 className="w-5 h-5 text-red-500 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm text-red-700 dark:text-red-400">{deletion.title}</p>
+        <p className="text-xs text-red-600/70 dark:text-red-400/70">
+          {format(parseISO(deletion.date), 'EEE, MMM d')} - Will be deleted
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function EmptyProposalPanel() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-8">
       <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
         <Calendar className="w-8 h-8 text-muted-foreground" />
       </div>
       <p className="text-muted-foreground text-sm">
-        Your proposed workouts will appear here
+        Workout proposals will appear here
       </p>
       <p className="text-muted-foreground text-xs mt-1">
-        Start by describing your training goals in the chat
+        Ask the coach to plan workouts for you
       </p>
     </div>
   )
@@ -137,29 +181,27 @@ function EmptyWorkoutsPanel() {
 function ChatPanel({
   conversation,
   thinkingMessage,
-  isGenerating,
+  activeToolCall,
+  isProcessing,
   hasProposal,
-  pendingQuestion,
   input,
   setInput,
   onSubmit,
-  onOptionSelect,
 }: {
-  conversation: ConversationMessage[]
+  conversation: CoachingMessage[]
   thinkingMessage: string | null
-  isGenerating: boolean
+  activeToolCall: ToolCallInfo | null
+  isProcessing: boolean
   hasProposal: boolean
-  pendingQuestion: QuestionEvent | null
   input: string
   setInput: (value: string) => void
   onSubmit: (e: React.FormEvent) => void
-  onOptionSelect: (option: string) => void
 }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversation, thinkingMessage, pendingQuestion])
+  }, [conversation, thinkingMessage, activeToolCall])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -172,13 +214,13 @@ function ChatPanel({
     <div className="flex flex-col h-full">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {conversation.length === 0 && !isGenerating && (
+        {conversation.length === 0 && !isProcessing && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted-foreground">
-              <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Describe your training goals</p>
+              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Chat with your AI coach</p>
               <p className="text-xs mt-1">
-                e.g., "4-week plan to improve my 10K"
+                Ask about training, plan workouts, or get insights
               </p>
             </div>
           </div>
@@ -188,15 +230,12 @@ function ChatPanel({
           <MessageBubble key={index} message={message} />
         ))}
 
-        {pendingQuestion?.options && pendingQuestion.options.length > 0 && (
-          <QuestionOptions
-            options={pendingQuestion.options}
-            onSelect={onOptionSelect}
-          />
+        {isProcessing && thinkingMessage && !activeToolCall && (
+          <ThinkingIndicator message={thinkingMessage} />
         )}
 
-        {isGenerating && thinkingMessage && (
-          <ThinkingBubble message={thinkingMessage} />
+        {isProcessing && activeToolCall && (
+          <ToolCallIndicator toolCall={activeToolCall} />
         )}
 
         <div ref={messagesEndRef} />
@@ -210,21 +249,19 @@ function ChatPanel({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
-              pendingQuestion
-                ? 'Answer the question...'
-                : hasProposal
-                  ? 'Describe changes...'
-                  : 'Describe your training goals...'
+              hasProposal
+                ? 'Ask to modify the plan...'
+                : 'Ask about training or plan workouts...'
             }
-            disabled={isGenerating}
+            disabled={isProcessing}
             className="flex-1"
           />
           <Button
             type="submit"
-            disabled={!input.trim() || isGenerating}
+            disabled={!input.trim() || isProcessing}
             size="icon"
           >
-            {isGenerating ? (
+            {isProcessing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
@@ -236,48 +273,57 @@ function ChatPanel({
   )
 }
 
-function WorkoutsPanel({
+function ProposalPanel({
   workouts,
+  deletions,
   onAccept,
-  onDiscard,
+  onReject,
   isAccepting,
 }: {
-  workouts: ProposedWorkout[] | null
+  workouts: WorkoutProposalItem[]
+  deletions: WorkoutDeletionItem[]
   onAccept: () => void
-  onDiscard: () => void
+  onReject: () => void
   isAccepting: boolean
 }) {
-  if (!workouts) {
-    return <EmptyWorkoutsPanel />
+  const hasChanges = workouts.length > 0 || deletions.length > 0
+
+  if (!hasChanges) {
+    return <EmptyProposalPanel />
   }
 
-  const editCount = workouts.filter(w => w.existing_workout_id).length
+  const editCount = workouts.filter((w) => w.existing_workout_id).length
   const newCount = workouts.length - editCount
+  const deleteCount = deletions.length
 
   return (
     <div className="flex flex-col h-full">
       {/* Sticky header with actions */}
       <div className="flex items-center justify-between p-4 border-b bg-background">
         <div className="text-sm font-medium">
-          {editCount > 0 ? (
-            <>
-              {newCount > 0 && <span>{newCount} new</span>}
-              {newCount > 0 && editCount > 0 && <span>, </span>}
-              <span className="text-amber-600 dark:text-amber-400">{editCount} edit{editCount !== 1 ? 's' : ''}</span>
-            </>
-          ) : (
-            <>{workouts.length} workout{workouts.length !== 1 ? 's' : ''} proposed</>
+          {newCount > 0 && <span>{newCount} new</span>}
+          {newCount > 0 && editCount > 0 && <span>, </span>}
+          {editCount > 0 && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {editCount} edit{editCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {(newCount > 0 || editCount > 0) && deleteCount > 0 && <span>, </span>}
+          {deleteCount > 0 && (
+            <span className="text-red-600 dark:text-red-400">
+              {deleteCount} deletion{deleteCount !== 1 ? 's' : ''}
+            </span>
           )}
         </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={onDiscard}
+            onClick={onReject}
             disabled={isAccepting}
           >
             <X className="h-4 w-4 mr-1" />
-            Discard
+            Reject
           </Button>
           <Button size="sm" onClick={onAccept} disabled={isAccepting}>
             {isAccepting ? (
@@ -285,13 +331,19 @@ function WorkoutsPanel({
             ) : (
               <Check className="h-4 w-4 mr-1" />
             )}
-            Accept & Save
+            Accept All
           </Button>
         </div>
       </div>
 
-      {/* Scrollable workout list */}
+      {/* Scrollable proposal content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Deletions first */}
+        {deletions.map((deletion) => (
+          <DeletionCard key={deletion.workout_id} deletion={deletion} />
+        ))}
+
+        {/* Then workouts */}
         {workouts.map((workout, index) => (
           <ProposedWorkoutCard key={`${workout.date}-${index}`} workout={workout} />
         ))}
@@ -300,48 +352,36 @@ function WorkoutsPanel({
   )
 }
 
-export function WorkoutPlanningChat() {
+export function CoachingChat() {
   const [input, setInput] = useState('')
   const [isAccepting, setIsAccepting] = useState(false)
 
   const {
-    isGenerating,
+    isProcessing,
     thinkingMessage,
+    activeToolCall,
     conversation,
     proposal,
-    pendingQuestion,
     error,
-    generate,
-    refine,
-    accept,
-    reject,
-  } = useConversationalPlanning()
+    sendMessage,
+    acceptProposal,
+    rejectProposal,
+    clearError,
+  } = useCoachingChat()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isGenerating) return
+    if (!input.trim() || isProcessing) return
 
     const trimmedInput = input.trim()
     setInput('')
-
-    // If there's a pending question or no proposal, use generate
-    // (answers to questions go through generate to continue the flow)
-    if (pendingQuestion || !proposal) {
-      generate(trimmedInput)
-    } else {
-      refine(trimmedInput)
-    }
-  }
-
-  const handleOptionSelect = (option: string) => {
-    if (isGenerating) return
-    generate(option)
+    sendMessage(trimmedInput)
   }
 
   const handleAccept = async () => {
     setIsAccepting(true)
     try {
-      await accept()
+      await acceptProposal()
     } finally {
       setIsAccepting(false)
     }
@@ -356,22 +396,22 @@ export function WorkoutPlanningChat() {
           <ChatPanel
             conversation={conversation}
             thinkingMessage={thinkingMessage}
-            isGenerating={isGenerating}
+            activeToolCall={activeToolCall}
+            isProcessing={isProcessing}
             hasProposal={!!proposal}
-            pendingQuestion={pendingQuestion}
             input={input}
             setInput={setInput}
             onSubmit={handleSubmit}
-            onOptionSelect={handleOptionSelect}
           />
         </div>
 
-        {/* Right: Workouts panel (60%) */}
+        {/* Right: Proposal panel (60%) */}
         <div className="w-[60%] bg-muted/30">
-          <WorkoutsPanel
-            workouts={proposal?.workouts ?? null}
+          <ProposalPanel
+            workouts={proposal?.workouts ?? []}
+            deletions={proposal?.deletions ?? []}
             onAccept={handleAccept}
-            onDiscard={reject}
+            onReject={rejectProposal}
             isAccepting={isAccepting}
           />
         </div>
@@ -379,8 +419,11 @@ export function WorkoutPlanningChat() {
 
       {/* Error display */}
       {error && (
-        <div className="p-3 border-t bg-destructive/10">
+        <div className="p-3 border-t bg-destructive/10 flex items-center justify-between">
           <p className="text-sm text-destructive">{error}</p>
+          <Button variant="ghost" size="sm" onClick={clearError}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>

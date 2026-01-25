@@ -3,7 +3,7 @@
 import copy
 import json
 from datetime import date
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import httpx
 from pydantic import BaseModel
@@ -12,6 +12,10 @@ from ..config import settings
 from ..database.models import PlannedWorkout, UserProfile
 from ..metrics.planned_tss import calculate_planned_tss
 from ..metrics.calories import predict_calories
+
+
+# Default model for coaching
+DEFAULT_MODEL = "google/gemini-3-flash-preview"
 
 
 def _make_schema_strict(schema: dict) -> dict:
@@ -502,3 +506,65 @@ Reference workouts by their ID from the 'Already Planned Workouts' section."""
 Respond with a JSON object containing:
 1. "workouts": array of workout objects
 2. "explanation": brief explanation of your plan (2-3 sentences)"""
+
+
+async def chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    model: str = DEFAULT_MODEL,
+) -> Optional[dict[str, Any]]:
+    """Call the LLM with tool-calling support.
+
+    Args:
+        messages: Conversation messages including system prompt
+        tools: List of tool definitions in OpenAI format
+        model: Model to use (default: Gemini 2.5 Flash)
+
+    Returns:
+        Dict with 'message' (assistant response) and 'finish_reason',
+        or None if request failed.
+    """
+    if not settings.has_openrouter_key:
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "tools": tools,
+                    "max_tokens": 8000,
+                },
+                timeout=120.0,
+            )
+
+            if response.status_code != 200:
+                print(f"OpenRouter API error: {response.status_code} - {response.text}")
+                return {"error": f"API error: {response.status_code}"}
+
+            result = response.json()
+
+            if "error" in result:
+                print(f"OpenRouter returned error: {result['error']}")
+                return {"error": str(result["error"])}
+
+            choices = result.get("choices", [])
+            if not choices:
+                print(f"OpenRouter returned no choices: {result}")
+                return {"error": "No response generated"}
+
+            choice = choices[0]
+            return {
+                "message": choice.get("message", {}),
+                "finish_reason": choice.get("finish_reason", ""),
+            }
+
+    except Exception as e:
+        print(f"Error in chat_with_tools: {e}")
+        return {"error": str(e)}
