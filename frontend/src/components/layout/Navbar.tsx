@@ -1,13 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { Activity, Calendar, Target, Settings, BookOpen, TrendingUp } from 'lucide-react'
+import { Activity, Calendar, MessageSquare, Settings, BookOpen, TrendingUp } from 'lucide-react'
 import { NotificationButton } from '@/components/wellness/NotificationButton'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: Calendar },
   { href: '/activities', label: 'Activities', icon: Activity },
   { href: '/analytics', label: 'Analytics', icon: TrendingUp },
-  { href: '/planning', label: 'Planning', icon: Target },
+  { href: '/planning', label: 'Coach', icon: MessageSquare },
   { href: '/metrics', label: 'Metrics', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
