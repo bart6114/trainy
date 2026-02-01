@@ -93,3 +93,46 @@ class MergePainLocationsResponse(BaseModel):
     """Response from merging pain locations."""
 
     updated_count: int
+
+
+# --- Rowing PRs Schemas ---
+
+
+class RowingDistancePR(BaseModel):
+    """A personal record for a specific rowing distance."""
+
+    distance_meters: int
+    distance_label: str  # "500m", "1k", "2k", "5k", "10k"
+    total_seconds: Optional[float] = None
+    split_seconds: Optional[float] = None  # Time per 500m
+    activity_id: Optional[int] = None
+    activity_date: Optional[date] = None
+
+
+class RowingPowerPR(BaseModel):
+    """A personal record for a specific rowing power duration."""
+
+    duration_seconds: int
+    duration_label: str  # "1min", "4min", "30min", "60min"
+    best_watts: Optional[float] = None
+    activity_id: Optional[int] = None
+    activity_date: Optional[date] = None
+
+
+class RowingTimePR(BaseModel):
+    """A personal record for best distance covered in a specific time."""
+
+    duration_seconds: int
+    duration_label: str  # "1min", "4min", "20min", etc.
+    best_distance_meters: Optional[float] = None
+    split_seconds: Optional[float] = None  # Pace per 500m
+    activity_id: Optional[int] = None
+    activity_date: Optional[date] = None
+
+
+class RowingPRsResponse(BaseModel):
+    """Response containing rowing personal records."""
+
+    distance_prs: list[RowingDistancePR]
+    time_prs: list[RowingTimePR]
+    power_prs: list[RowingPowerPR]

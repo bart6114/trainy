@@ -13,44 +13,59 @@ from fitparse import FitFile
 from ..database.models import Activity
 
 
-def calculate_peak_power(power_samples: list[float], window_seconds: int) -> Optional[float]:
+def calculate_peak_power(power_samples: list[float], window_seconds: int, sample_interval: int = 1) -> Optional[float]:
     """Calculate peak (best) average power over a rolling window.
 
     Args:
-        power_samples: List of power values (assumed 1-second samples)
-        window_seconds: Rolling average window size
+        power_samples: List of power values
+        window_seconds: Rolling average window size in seconds
+        sample_interval: Seconds between samples (default 1, C2 ergs use 3)
 
     Returns:
         Peak average power in watts, or None if insufficient data
     """
-    if not power_samples or len(power_samples) < window_seconds:
+    # Convert window from seconds to number of samples
+    window_samples = window_seconds // sample_interval
+
+    if not power_samples or len(power_samples) < window_samples:
         return None
 
     max_avg = 0.0
-    for i in range(len(power_samples) - window_seconds + 1):
-        window = power_samples[i:i + window_seconds]
-        avg = sum(window) / window_seconds
+    for i in range(len(power_samples) - window_samples + 1):
+        window = power_samples[i:i + window_samples]
+        avg = sum(window) / window_samples
         if avg > max_avg:
             max_avg = avg
 
     return round(max_avg, 1) if max_avg > 0 else None
 
 
-def calculate_all_peak_powers(power_samples: list[float]) -> dict[str, Optional[float]]:
+def calculate_all_peak_powers(power_samples: list[float], include_rowing: bool = False, sample_interval: int = 1) -> dict[str, Optional[float]]:
     """Calculate peak powers for all standard durations.
 
     Args:
-        power_samples: List of power values (assumed 1-second samples)
+        power_samples: List of power values
+        include_rowing: Whether to include rowing-specific durations (4min, 30min, 60min)
+        sample_interval: Seconds between samples (default 1, C2 ergs use 3)
 
     Returns:
-        Dictionary with peak powers for 5s, 1min, 5min, 20min
+        Dictionary with peak powers for standard and optionally rowing durations
     """
-    return {
-        "peak_power_5s": calculate_peak_power(power_samples, 5),
-        "peak_power_1min": calculate_peak_power(power_samples, 60),
-        "peak_power_5min": calculate_peak_power(power_samples, 300),
-        "peak_power_20min": calculate_peak_power(power_samples, 1200),
+    peaks = {
+        "peak_power_5s": calculate_peak_power(power_samples, 5, sample_interval),
+        "peak_power_1min": calculate_peak_power(power_samples, 60, sample_interval),
+        "peak_power_5min": calculate_peak_power(power_samples, 300, sample_interval),
+        "peak_power_20min": calculate_peak_power(power_samples, 1200, sample_interval),
     }
+
+    if include_rowing:
+        peaks.update({
+            "peak_power_4min": calculate_peak_power(power_samples, 240, sample_interval),
+            "peak_power_30min": calculate_peak_power(power_samples, 1800, sample_interval),
+            "peak_power_60min": calculate_peak_power(power_samples, 3600, sample_interval),
+        })
+
+    return peaks
 
 
 def calculate_normalized_power(power_samples: list[float], window_seconds: int = 30) -> Optional[float]:
@@ -353,31 +368,202 @@ def _generate_title(activity_type: str, start_time: datetime, session_data: dict
     return f"{time_of_day} {type_name}"
 
 
-def extract_power_samples_from_fit(path: Path) -> list[float]:
-    """Extract power samples from a FIT file.
+def extract_distance_time_series(path: Path) -> list[tuple[float, float]]:
+    """Extract distance/time series from a FIT file.
 
     Args:
         path: Path to the FIT file
 
     Returns:
-        List of power values (1-second samples)
+        List of (cumulative_distance_meters, elapsed_seconds) tuples
     """
     if not path.exists():
         return []
 
     try:
         fit = FitFile(str(path))
-        power_samples = []
+        series = []
+        start_time = None
 
         for record in fit.get_messages("record"):
-            for field in record.fields:
-                if field.name == "power" and field.value is not None:
-                    power_samples.append(field.value)
-                    break
+            fields = {f.name: f.value for f in record.fields}
+            if "distance" in fields and "timestamp" in fields:
+                distance = fields["distance"]
+                timestamp = fields["timestamp"]
+                if distance is not None and timestamp is not None:
+                    if start_time is None:
+                        start_time = timestamp
+                    elapsed = (timestamp - start_time).total_seconds()
+                    series.append((distance, elapsed))
 
-        return power_samples
+        return series
     except Exception:
         return []
+
+
+def calculate_best_effort_time(distance_time_series: list[tuple[float, float]], target_distance: float, tolerance: float = 0.01) -> Optional[float]:
+    """Find the best (fastest) time to cover a target distance using sliding window.
+
+    Args:
+        distance_time_series: List of (cumulative_distance, elapsed_seconds) tuples
+        target_distance: Target distance in meters
+        tolerance: Fraction of target distance to allow as shortfall (default 1%)
+
+    Returns:
+        Best time in seconds to cover the target distance, or None if not possible
+    """
+    if not distance_time_series:
+        return None
+
+    first_distance = distance_time_series[0][0]
+    max_distance = distance_time_series[-1][0]
+    total_covered = max_distance - first_distance
+    min_required = target_distance * (1 - tolerance)
+
+    # Not enough distance covered
+    if total_covered < min_required:
+        return None
+
+    # If the whole activity is within tolerance of target, return total time
+    # (handles test pieces that are exactly the target distance)
+    if total_covered < target_distance and total_covered >= min_required:
+        total_time = distance_time_series[-1][1] - distance_time_series[0][1]
+        return round(total_time, 1)
+
+    # Otherwise use sliding window to find best effort
+    effective_target = target_distance
+
+    best_time = None
+    end_idx = 0
+
+    for start_idx, (start_dist, start_time) in enumerate(distance_time_series):
+        # Find the first point where distance >= start_dist + effective_target
+        while end_idx < len(distance_time_series):
+            end_dist, end_time = distance_time_series[end_idx]
+            if end_dist >= start_dist + effective_target:
+                # Interpolate for more accurate time
+                if end_idx > 0:
+                    prev_dist, prev_time = distance_time_series[end_idx - 1]
+                    if end_dist > prev_dist:
+                        # Linear interpolation to find exact time at target distance
+                        target_dist = start_dist + effective_target
+                        fraction = (target_dist - prev_dist) / (end_dist - prev_dist)
+                        interpolated_time = prev_time + fraction * (end_time - prev_time)
+                        elapsed = interpolated_time - start_time
+                    else:
+                        elapsed = end_time - start_time
+                else:
+                    elapsed = end_time - start_time
+
+                if best_time is None or elapsed < best_time:
+                    best_time = elapsed
+                break
+            end_idx += 1
+
+        # Reset end_idx to search from current position (optimization)
+        if end_idx > start_idx:
+            end_idx = start_idx + 1
+
+    return round(best_time, 1) if best_time is not None else None
+
+
+def calculate_best_effort_distance(distance_time_series: list[tuple[float, float]], target_seconds: float, tolerance: float = 0.01) -> Optional[float]:
+    """Find the best (longest) distance covered in a target time using sliding window.
+
+    Args:
+        distance_time_series: List of (cumulative_distance, elapsed_seconds) tuples
+        target_seconds: Target time in seconds
+        tolerance: Fraction of target time to allow as shortfall (default 1%)
+
+    Returns:
+        Best distance in meters covered in the target time, or None if not possible
+    """
+    if not distance_time_series:
+        return None
+
+    first_time = distance_time_series[0][1]
+    max_time = distance_time_series[-1][1]
+    total_duration = max_time - first_time
+    min_required = target_seconds * (1 - tolerance)
+
+    # Not enough duration
+    if total_duration < min_required:
+        return None
+
+    # If the whole activity is within tolerance of target, return total distance
+    if total_duration < target_seconds and total_duration >= min_required:
+        total_distance = distance_time_series[-1][0] - distance_time_series[0][0]
+        return round(total_distance, 1)
+
+    # Otherwise use sliding window to find best effort
+    best_distance = None
+    end_idx = 0
+
+    for start_idx, (start_dist, start_time) in enumerate(distance_time_series):
+        # Find the first point where time >= start_time + target_seconds
+        while end_idx < len(distance_time_series):
+            end_dist, end_time = distance_time_series[end_idx]
+            if end_time >= start_time + target_seconds:
+                # Interpolate for more accurate distance
+                if end_idx > 0:
+                    prev_dist, prev_time = distance_time_series[end_idx - 1]
+                    if end_time > prev_time:
+                        # Linear interpolation to find exact distance at target time
+                        target_time = start_time + target_seconds
+                        fraction = (target_time - prev_time) / (end_time - prev_time)
+                        interpolated_dist = prev_dist + fraction * (end_dist - prev_dist)
+                        distance_covered = interpolated_dist - start_dist
+                    else:
+                        distance_covered = end_dist - start_dist
+                else:
+                    distance_covered = end_dist - start_dist
+
+                if best_distance is None or distance_covered > best_distance:
+                    best_distance = distance_covered
+                break
+            end_idx += 1
+
+        # Reset end_idx to search from current position
+        if end_idx > start_idx:
+            end_idx = start_idx + 1
+
+    return round(best_distance, 1) if best_distance is not None else None
+
+
+def extract_power_samples_from_fit(path: Path) -> tuple[list[float], int]:
+    """Extract power samples from a FIT file with sample interval detection.
+
+    Args:
+        path: Path to the FIT file
+
+    Returns:
+        Tuple of (power_samples, sample_interval_seconds)
+        sample_interval is 1 for most devices, 3 for Concept2 ergs
+    """
+    if not path.exists():
+        return [], 1
+
+    try:
+        fit = FitFile(str(path))
+        power_samples = []
+        timestamps = []
+
+        for record in fit.get_messages("record"):
+            fields = {f.name: f.value for f in record.fields}
+            if "power" in fields and fields["power"] is not None:
+                power_samples.append(fields["power"])
+                if "timestamp" in fields:
+                    timestamps.append(fields["timestamp"])
+
+        # Detect sample interval from first two timestamps
+        sample_interval = 1
+        if len(timestamps) >= 2:
+            diff = (timestamps[1] - timestamps[0]).total_seconds()
+            sample_interval = max(1, int(round(diff)))
+
+        return power_samples, sample_interval
+    except Exception:
+        return [], 1
 
 
 class FitImporter:
