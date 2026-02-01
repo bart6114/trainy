@@ -93,3 +93,17 @@ class ActivityTrackResponse(BaseModel):
     activity_id: int
     has_track: bool
     points: list[TrackPoint] = []
+
+
+class ActivityStreamsResponse(BaseModel):
+    """Time series stream data for an activity."""
+
+    activity_id: int
+    timestamps: list[float] = []  # Elapsed seconds from start
+    heart_rate: Optional[list[Optional[int]]] = None
+    power: Optional[list[Optional[float]]] = None
+    cadence: Optional[list[Optional[int]]] = None
+    speed: Optional[list[Optional[float]]] = None  # m/s
+    elevation: Optional[list[Optional[float]]] = None  # meters
+    distance: list[float] = []  # Cumulative meters
+    position: Optional[list[Optional[TrackPoint]]] = None  # GPS coordinates

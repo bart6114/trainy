@@ -526,6 +526,19 @@ export interface ActivityTrackResponse {
   points: TrackPoint[]
 }
 
+// Activity streams types
+export interface ActivityStreams {
+  activity_id: number
+  timestamps: number[]
+  heart_rate: (number | null)[] | null
+  power: (number | null)[] | null
+  cadence: (number | null)[] | null
+  speed: (number | null)[] | null
+  elevation: (number | null)[] | null
+  distance: number[]
+  position: (TrackPoint | null)[] | null
+}
+
 // Coaching chat types
 export interface ToolCallInfo {
   tool_name: string
@@ -604,4 +617,37 @@ export interface AcceptCoachingProposalResponse {
   updated_ids: number[]
   deleted_ids: number[]
   message: string
+}
+
+// Rowing PRs types
+export interface RowingDistancePR {
+  distance_meters: number
+  distance_label: string
+  total_seconds: number | null
+  split_seconds: number | null
+  activity_id: number | null
+  activity_date: string | null
+}
+
+export interface RowingPowerPR {
+  duration_seconds: number
+  duration_label: string
+  best_watts: number | null
+  activity_id: number | null
+  activity_date: string | null
+}
+
+export interface RowingTimePR {
+  duration_seconds: number
+  duration_label: string
+  best_distance_meters: number | null
+  split_seconds: number | null
+  activity_id: number | null
+  activity_date: string | null
+}
+
+export interface RowingPRsResponse {
+  distance_prs: RowingDistancePR[]
+  time_prs: RowingTimePR[]
+  power_prs: RowingPowerPR[]
 }

@@ -1,17 +1,21 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useActivities } from '@/hooks/useActivities'
 import { ActivityTable } from '@/components/activities/ActivityTable'
 import { ActivityCard } from '@/components/activities/ActivityCard'
-import { ActivityDetailSheet } from '@/components/activities/ActivityDetailSheet'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, Grid, List } from 'lucide-react'
 
 export function Activities() {
+  const navigate = useNavigate()
   const [page, setPage] = useState(0)
   const [view, setView] = useState<'table' | 'cards'>('table')
-  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null)
   const limit = 20
   const { data, isLoading } = useActivities(page * limit, limit)
+
+  const handleActivityClick = (activityId: number) => {
+    navigate(`/activities/${activityId}`)
+  }
 
   return (
     <div className="space-y-6">
@@ -39,7 +43,7 @@ export function Activities() {
           {view === 'table' ? (
             <ActivityTable
               activities={data.items}
-              onSelect={(activity) => setSelectedActivityId(activity.id)}
+              onSelect={(activity) => handleActivityClick(activity.id)}
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -47,7 +51,7 @@ export function Activities() {
                 <ActivityCard
                   key={activity.id}
                   activity={activity}
-                  onClick={() => setSelectedActivityId(activity.id)}
+                  onClick={() => handleActivityClick(activity.id)}
                 />
               ))}
             </div>
@@ -74,11 +78,6 @@ export function Activities() {
         </div>
       )}
 
-      <ActivityDetailSheet
-        activityId={selectedActivityId}
-        open={selectedActivityId !== null}
-        onOpenChange={(open) => !open && setSelectedActivityId(null)}
-      />
     </div>
   )
 }

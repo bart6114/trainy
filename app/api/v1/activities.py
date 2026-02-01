@@ -14,6 +14,7 @@ from app.api.schemas.activities import (
     ActivityListResponse,
     ActivityMetricsResponse,
     ActivityTrackResponse,
+    ActivityStreamsResponse,
     TrackPoint,
 )
 
@@ -215,4 +216,129 @@ async def get_activity_track(
         activity_id=activity_id,
         has_track=len(points) > 0,
         points=points,
+    )
+
+
+@router.get("/{activity_id}/streams", response_model=ActivityStreamsResponse)
+async def get_activity_streams(
+    activity_id: int,
+    repo: Repository = Depends(get_repo),
+):
+    """Get time series stream data for an activity."""
+    activity = repo.get_activity_by_id(activity_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if not activity.raw_fit_data:
+        return ActivityStreamsResponse(
+            activity_id=activity_id,
+            timestamps=[],
+            distance=[],
+        )
+
+    # Decompress and parse the raw FIT data
+    try:
+        json_str = gzip.decompress(activity.raw_fit_data).decode("utf-8")
+        raw_data = json.loads(json_str)
+    except (gzip.BadGzipFile, json.JSONDecodeError):
+        return ActivityStreamsResponse(
+            activity_id=activity_id,
+            timestamps=[],
+            distance=[],
+        )
+
+    records = raw_data.get("records", [])
+    if not records:
+        return ActivityStreamsResponse(
+            activity_id=activity_id,
+            timestamps=[],
+            distance=[],
+        )
+
+    # Extract streams from records
+    timestamps = []
+    heart_rate = []
+    power = []
+    cadence = []
+    speed = []
+    elevation = []
+    distance = []
+    position = []
+
+    first_timestamp = None
+
+    for record in records:
+        # Get timestamp
+        ts = record.get("timestamp")
+        if ts is None:
+            continue
+
+        # Parse timestamp and calculate elapsed seconds
+        from datetime import datetime as dt
+
+        if isinstance(ts, str):
+            try:
+                record_time = dt.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+        else:
+            continue
+
+        if first_timestamp is None:
+            first_timestamp = record_time
+
+        elapsed = (record_time - first_timestamp).total_seconds()
+        timestamps.append(elapsed)
+
+        # Heart rate
+        hr = record.get("heart_rate")
+        heart_rate.append(int(hr) if hr is not None else None)
+
+        # Power
+        pwr = record.get("power")
+        power.append(float(pwr) if pwr is not None else None)
+
+        # Cadence (could be cadence or running_cadence)
+        cad = record.get("cadence") or record.get("running_cadence")
+        cadence.append(int(cad) if cad is not None else None)
+
+        # Speed (could be speed or enhanced_speed)
+        spd = record.get("speed") or record.get("enhanced_speed")
+        speed.append(float(spd) if spd is not None else None)
+
+        # Elevation (could be altitude or enhanced_altitude)
+        alt = record.get("altitude") or record.get("enhanced_altitude")
+        elevation.append(float(alt) if alt is not None else None)
+
+        # Distance
+        dist = record.get("distance")
+        distance.append(float(dist) if dist is not None else 0.0)
+
+        # Position
+        lat = record.get("position_lat")
+        lng = record.get("position_long")
+        if lat is not None and lng is not None:
+            lat_deg = _semicircles_to_degrees(lat)
+            lng_deg = _semicircles_to_degrees(lng)
+            if -90 <= lat_deg <= 90 and -180 <= lng_deg <= 180:
+                position.append(TrackPoint(lat=lat_deg, lng=lng_deg))
+            else:
+                position.append(None)
+        else:
+            position.append(None)
+
+    # Filter out streams that are all None
+    def has_data(stream: list) -> bool:
+        return any(v is not None for v in stream)
+
+    return ActivityStreamsResponse(
+        activity_id=activity_id,
+        timestamps=timestamps,
+        heart_rate=heart_rate if has_data(heart_rate) else None,
+        power=power if has_data(power) else None,
+        cadence=cadence if has_data(cadence) else None,
+        speed=speed if has_data(speed) else None,
+        elevation=elevation if has_data(elevation) else None,
+        distance=distance,
+        position=position if has_data(position) else None,
     )

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { getActivities, getActivity, getActivityTrack } from '@/api/activities'
+import { getActivities, getActivity, getActivityTrack, getActivityStreams } from '@/api/activities'
 
 export function useActivities(offset = 0, limit = 50) {
   return useQuery({
@@ -20,6 +20,14 @@ export function useActivityTrack(id: number, enabled = true) {
   return useQuery({
     queryKey: ['activity-track', id],
     queryFn: () => getActivityTrack(id),
+    enabled: !!id && enabled,
+  })
+}
+
+export function useActivityStreams(id: number, enabled = true) {
+  return useQuery({
+    queryKey: ['activity-streams', id],
+    queryFn: () => getActivityStreams(id),
     enabled: !!id && enabled,
   })
 }

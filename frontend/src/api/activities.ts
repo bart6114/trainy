@@ -1,5 +1,5 @@
 import { get } from './client'
-import type { Activity, ActivityWithMetrics, ActivityTrackResponse, PaginatedResponse } from '@/types'
+import type { Activity, ActivityWithMetrics, ActivityTrackResponse, ActivityStreams, PaginatedResponse } from '@/types'
 
 export async function getActivities(
   offset = 0,
@@ -14,4 +14,8 @@ export async function getActivity(id: number): Promise<ActivityWithMetrics> {
 
 export async function getActivityTrack(id: number): Promise<ActivityTrackResponse> {
   return get<ActivityTrackResponse>(`/activities/${id}/track`)
+}
+
+export async function getActivityStreams(id: number): Promise<ActivityStreams> {
+  return get<ActivityStreams>(`/activities/${id}/streams`)
 }
