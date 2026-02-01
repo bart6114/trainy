@@ -15,6 +15,7 @@ from trainy.metrics.tss import calculate_tss
 from trainy.adherence import AdherenceTracker
 from trainy.config import settings
 from app.dependencies import get_repo
+from app.api.v1.metrics import calculate_activity_metrics_for_ids, recalculate_daily_metrics_from_date
 
 router = APIRouter()
 
@@ -59,6 +60,7 @@ async def import_generator(
     skipped = 0
     errors = 0
     profile = repo.get_current_profile()
+    imported_activities: list[tuple[int, date]] = []  # Track (activity_id, date) for metrics
 
     for i, fit_path in enumerate(fit_files, 1):
         try:
@@ -129,6 +131,7 @@ async def import_generator(
             # Insert activity
             print(f"  -> IMPORTED: {activity.activity_type} on {activity.start_time.date()}")
             activity_id = repo.insert_activity(activity)
+            imported_activities.append((activity_id, activity.start_time.date()))
 
             # Calculate TSS
             tss, method, intensity_factor = calculate_tss(activity, profile, activity.raw_fit_data)
@@ -161,9 +164,31 @@ async def import_generator(
             }
             await asyncio.sleep(0)
 
-    # Mark metrics as dirty after import
-    if imported > 0:
-        repo.set_metrics_dirty(True)
+    # Calculate metrics for imported activities
+    if imported > 0 and imported_activities:
+        # Calculate activity metrics (EF, VI, peak powers)
+        yield {
+            "event": "metrics",
+            "data": json.dumps({"phase": "activities", "count": len(imported_activities)}),
+        }
+        await asyncio.sleep(0)
+
+        activity_ids = [aid for aid, _ in imported_activities]
+        calculate_activity_metrics_for_ids(repo, activity_ids, profile)
+
+        # Calculate daily metrics from earliest imported date
+        earliest_date = min(d for _, d in imported_activities)
+
+        yield {
+            "event": "metrics",
+            "data": json.dumps({"phase": "daily", "from": earliest_date.isoformat()}),
+        }
+        await asyncio.sleep(0)
+
+        recalculate_daily_metrics_from_date(repo, earliest_date)
+
+        # Metrics are now up to date
+        repo.set_metrics_dirty(False)
 
     yield {
         "event": "complete",

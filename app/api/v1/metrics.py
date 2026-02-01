@@ -34,6 +34,134 @@ from app.api.schemas.common import SuccessResponse
 router = APIRouter()
 
 
+def calculate_activity_metrics_for_ids(
+    repo: Repository,
+    activity_ids: list[int],
+    profile,
+) -> int:
+    """Calculate EF, VI, peak powers for specific activities.
+
+    TSS is already calculated during import - this adds the rest.
+    Returns count of activities processed.
+    """
+    if not activity_ids:
+        return 0
+
+    activities = repo.get_activities_by_ids(activity_ids)
+    count = 0
+
+    for activity in activities:
+        # Get existing metrics (TSS was set during import)
+        existing = repo.get_activity_metrics(activity.id)
+
+        # Calculate efficiency metrics
+        ef = calculate_efficiency_factor(activity)
+        vi = calculate_variability_index(activity)
+
+        # Calculate peak powers for cycling and rowing activities
+        peak_powers = {}
+        rowing_efforts = {}
+        if activity.activity_type in ("cycle", "row") and activity.fit_file_path:
+            fit_path = Path(activity.fit_file_path)
+            power_samples, sample_interval = extract_power_samples_from_fit(fit_path)
+            if power_samples:
+                include_rowing = activity.activity_type == "row"
+                peak_powers = calculate_all_peak_powers(
+                    power_samples, include_rowing=include_rowing, sample_interval=sample_interval
+                )
+
+            # Calculate rowing best efforts
+            if activity.activity_type == "row":
+                series = extract_distance_time_series(fit_path)
+                if series:
+                    rowing_efforts["rowing_500m_time"] = calculate_best_effort_time(series, 500)
+                    rowing_efforts["rowing_1k_time"] = calculate_best_effort_time(series, 1000)
+                    rowing_efforts["rowing_2k_time"] = calculate_best_effort_time(series, 2000)
+                    rowing_efforts["rowing_5k_time"] = calculate_best_effort_time(series, 5000)
+                    rowing_efforts["rowing_10k_time"] = calculate_best_effort_time(series, 10000)
+                    rowing_efforts["rowing_1min_distance"] = calculate_best_effort_distance(series, 60)
+                    rowing_efforts["rowing_4min_distance"] = calculate_best_effort_distance(series, 240)
+                    rowing_efforts["rowing_10min_distance"] = calculate_best_effort_distance(series, 600)
+                    rowing_efforts["rowing_20min_distance"] = calculate_best_effort_distance(series, 1200)
+                    rowing_efforts["rowing_30min_distance"] = calculate_best_effort_distance(series, 1800)
+                    rowing_efforts["rowing_60min_distance"] = calculate_best_effort_distance(series, 3600)
+
+        # Merge with existing metrics (preserve TSS from import)
+        metrics = ActivityMetrics(
+            activity_id=activity.id,
+            tss=existing.tss if existing else None,
+            tss_method=existing.tss_method if existing else None,
+            intensity_factor=existing.intensity_factor if existing else None,
+            efficiency_factor=ef,
+            variability_index=vi,
+            peak_power_5s=peak_powers.get("peak_power_5s"),
+            peak_power_1min=peak_powers.get("peak_power_1min"),
+            peak_power_5min=peak_powers.get("peak_power_5min"),
+            peak_power_20min=peak_powers.get("peak_power_20min"),
+            peak_power_4min=peak_powers.get("peak_power_4min"),
+            peak_power_30min=peak_powers.get("peak_power_30min"),
+            peak_power_60min=peak_powers.get("peak_power_60min"),
+            rowing_500m_time=rowing_efforts.get("rowing_500m_time"),
+            rowing_1k_time=rowing_efforts.get("rowing_1k_time"),
+            rowing_2k_time=rowing_efforts.get("rowing_2k_time"),
+            rowing_5k_time=rowing_efforts.get("rowing_5k_time"),
+            rowing_10k_time=rowing_efforts.get("rowing_10k_time"),
+            rowing_1min_distance=rowing_efforts.get("rowing_1min_distance"),
+            rowing_4min_distance=rowing_efforts.get("rowing_4min_distance"),
+            rowing_10min_distance=rowing_efforts.get("rowing_10min_distance"),
+            rowing_20min_distance=rowing_efforts.get("rowing_20min_distance"),
+            rowing_30min_distance=rowing_efforts.get("rowing_30min_distance"),
+            rowing_60min_distance=rowing_efforts.get("rowing_60min_distance"),
+        )
+        repo.insert_activity_metrics(metrics)
+        count += 1
+
+    return count
+
+
+def recalculate_daily_metrics_from_date(
+    repo: Repository,
+    start_date: date,
+) -> int:
+    """Recalculate daily metrics from start_date forward.
+
+    Uses previous day's CTL/ATL as starting point.
+    Returns count of days processed.
+    """
+    # Get previous day's metrics for starting CTL/ATL
+    prev_day = start_date - timedelta(days=1)
+    prev_metrics = repo.get_daily_metrics(prev_day)
+
+    start_ctl = prev_metrics.ctl if prev_metrics and prev_metrics.ctl else 0.0
+    start_atl = prev_metrics.atl if prev_metrics and prev_metrics.atl else 0.0
+
+    # Get 90 days of TSS history before start_date for rolling sums
+    history_start = start_date - timedelta(days=90)
+    all_tss = repo.get_daily_tss_series()
+
+    # Split into history (for context) and new data (to recalculate)
+    history_tss = [(d, t) for d, t in all_tss if d >= history_start and d < start_date]
+    new_tss = [(d, t) for d, t in all_tss if d >= start_date]
+
+    if not new_tss:
+        return 0
+
+    # Combine history with new data for proper rolling calculations
+    combined_tss = history_tss + new_tss
+
+    # Calculate training load with starting CTL/ATL
+    metrics_list = calculate_training_load(combined_tss, start_ctl, start_atl)
+
+    # Only upsert the new/updated metrics (from start_date onwards)
+    count = 0
+    for day_metrics in metrics_list:
+        if day_metrics.date >= start_date:
+            repo.upsert_daily_metrics(day_metrics)
+            count += 1
+
+    return count
+
+
 @router.get("/current", response_model=CurrentMetricsResponse)
 async def get_current_metrics(
     repo: Repository = Depends(get_repo),

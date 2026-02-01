@@ -782,6 +782,32 @@ class Repository:
         )
         return [(date.fromisoformat(row[0]), row[1] or 0) for row in cursor.fetchall()]
 
+    def get_daily_tss_from_date(self, start_date: date) -> list[tuple[date, float]]:
+        """Get (date, total_tss) from start_date onwards."""
+        cursor = self.conn.execute(
+            """
+            SELECT DATE(a.start_time) as day, COALESCE(SUM(m.tss), 0) as daily_tss
+            FROM activities a
+            LEFT JOIN activity_metrics m ON a.id = m.activity_id
+            WHERE DATE(a.start_time) >= ?
+            GROUP BY DATE(a.start_time)
+            ORDER BY day
+            """,
+            (start_date.isoformat(),),
+        )
+        return [(date.fromisoformat(row[0]), row[1] or 0) for row in cursor.fetchall()]
+
+    def get_activities_by_ids(self, activity_ids: list[int]) -> list[Activity]:
+        """Get multiple activities by their IDs."""
+        if not activity_ids:
+            return []
+        placeholders = ",".join("?" * len(activity_ids))
+        cursor = self.conn.execute(
+            f"SELECT * FROM activities WHERE id IN ({placeholders}) ORDER BY start_time",
+            activity_ids,
+        )
+        return [self._row_to_activity(row) for row in cursor.fetchall()]
+
     def rebuild_daily_metrics(self) -> None:
         """Rebuild all daily metrics from activities."""
         # Get all days with activities
